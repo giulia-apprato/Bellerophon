@@ -34,7 +34,7 @@ def mol_from_smiles(mol):
     return None
 
 # Load and process the SDF files
-warhead_df = load_and_process_sdf('warhead-protacdb-06-05-2024_customized.sdf')
+warhead_df = load_and_process_sdf('warhead-protacdb-06-05-2024.sdf')
 warhead_df = warhead_df.dropna(subset=['Mol'])
 e3_df = load_and_process_sdf('e3-ligand-protacdb-06-05-2024.sdf')
 e3_df = e3_df.dropna(subset=['Mol'])
