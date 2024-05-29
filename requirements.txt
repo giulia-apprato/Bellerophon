@@ -2,11 +2,4 @@ streamlit
 pandas
 rdkit
 numpy
-Chem 
-DataStructs
-PandasTools
-AllChem
-Draw
-IPythonConsole
-MolStandardize
 requests
