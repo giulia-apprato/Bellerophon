@@ -1,5 +1,5 @@
 streamlit
-pandas==2.1.1
+pandas
 rdkit==2023.9.5
 numpy
 requests
