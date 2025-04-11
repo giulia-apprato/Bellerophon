@@ -377,10 +377,10 @@ def main():
             <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@900&display=swap" rel="stylesheet">
         </head>
             <div style="text-align: center; font-family: 'Nunito', sans-serif; font-size: 32px;">
-            PROTAC splitting tool
+            Bellerophon, a PROTAC splitting tool
         </div>
         """, unsafe_allow_html=True)
-    st.image("arv-110-2.svg", use_column_width=True) # figure of ARV-110 building blocks highlighted followed by the caption
+    st.image("arv-110-2.svg", use_container_width=True) # figure of ARV-110 building blocks highlighted followed by the caption
     st.write("")
     st.markdown('<div style="text-align: justify"><b>PROTACs</b>, PROteolysis TARgeting Chimeras are heterobifunctional molecules capable of recruiting the ubiquitination complex and to cause the <b>degradation of the target protein</b>. PROTACs are made of three components, a <b>warhead</b> that binds the target, an <b>E3 ligand</b> that recruits the E3 ligase -part of the ubiquitination complex- and a <b>linker</b> joining these moieties. This tool allows to split PROTACs into their components. Warheads (currently 362 unique ligands) and e3 ligand (currently 75 unique ligands) are retrieved from <a href="http://cadd.zju.edu.cn/protacdb/">PROTAC-DB</a>. We hope this will help you investigating PROTACs building block properties and combining them for new design ideas.</div>', unsafe_allow_html=True)
     st.write("")
@@ -413,11 +413,11 @@ def main():
             else:
                 for idx, row in final_df.iterrows():
                         st.markdown(f"**Protac 2D structure**")
-                        st.image(Draw.MolToImage(row['Protac Mol'], size=(500, 500)), use_column_width=False, output_format='PNG')
+                        st.image(Draw.MolToImage(row['Protac Mol'], size=(500, 500)), use_container_width=False, output_format='PNG')
                         col1, col2, col3 = st.columns(3)
-                        col1.image(Draw.MolToImage(row['Warhead Mol'], size=(250, 300)), caption="Warhead", use_column_width=False)
-                        col2.image(Draw.MolToImage(row['Final Linker Mol'], size=(250, 300)), caption="Linker", use_column_width=False)
-                        col3.image(Draw.MolToImage(row['E3 Mol'], size=(250, 300)), caption="E3 ligand", use_column_width=False)
+                        col1.image(Draw.MolToImage(row['Warhead Mol'], size=(250, 300)), caption="Warhead", use_container_width=False)
+                        col2.image(Draw.MolToImage(row['Final Linker Mol'], size=(250, 300)), caption="Linker", use_container_width=False)
+                        col3.image(Draw.MolToImage(row['E3 Mol'], size=(250, 300)), caption="E3 ligand", use_container_width=False)
                         st.markdown("---") 
                         #st.write(final_df) debugging function only
                 # warhead: adding links to PubChem page 
@@ -442,15 +442,15 @@ def main():
     st.markdown("Splitting PROTAC is developed by CASSMedChem group from University of Turin in collaboration with [Alvascience](https://www.alvascience.com/). The Service is meant for non-commercial use only. For info, problems or a personalized version contact giulia.apprato@unito.it")
     st.sidebar.markdown("### You may be interested into our PROTAC-related works")
     st.sidebar.markdown("[1. DegraderTCM, ternary complex modeling and PROTACs ranking](https://pubs.acs.org/doi/10.1021/acsmedchemlett.3c00362)")
-    st.sidebar.image("degradertcm.svg", use_column_width=True)
+    st.sidebar.image("degradertcm.svg", use_container_width=True)
     st.sidebar.markdown("[2. ChamelogK, experimental descriptor of chamaleonicity](https://pubs.acs.org/doi/10.1021/acs.jmedchem.3c00823)")
-    st.sidebar.image("chamelogk.svg", use_column_width=True)
+    st.sidebar.image("chamelogk.svg", use_container_width=True)
     st.sidebar.markdown("[3. Orally bioavailable PROTACs chemical space](https://www.sciencedirect.com/science/article/pii/S1359644624000424?via%3Dihub)")
-    st.sidebar.image("orally_bioavailable.svg", use_column_width=True)
+    st.sidebar.image("orally_bioavailable.svg", use_container_width=True)
     st.sidebar.markdown("[4. PROTACs screening pipeline weaknesses](https://pubs.acs.org/doi/full/10.1021/acsmedchemlett.3c00231)")
-    st.sidebar.image("protacs_pipeline.svg", use_column_width=True)
+    st.sidebar.image("protacs_pipeline.svg", use_container_width=True)
     st.sidebar.markdown("[5. Designing soluble PROTACs](https://pubs.acs.org/doi/full/10.1021/acs.jmedchem.2c00201)")
-    st.sidebar.image("protacs_solubility.svg", use_column_width=True)       
+    st.sidebar.image("protacs_solubility.svg", use_container_width=True)       
 
 if __name__ == "__main__":
     main()
