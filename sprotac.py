@@ -374,10 +374,10 @@ def mol_to_image(mol, size=(300, 300)):
 def main():
     st.markdown("""
         <head>
-            <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@900&display=swap" rel="stylesheet">
+            <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
         </head>
-            <div style="text-align: center; font-family: 'Nunito', sans-serif; font-size: 32px;">
-            Bellerophon, a PROTAC splitting tool
+            <div style="text-align: center; font-family: 'Playfair Display', sans-serif; font-size: 32px;">
+            Bellerophon <br> a PROTAC splitting tool
         </div>
         """, unsafe_allow_html=True)
     st.image("arv-110-2.svg", use_container_width=True) # figure of ARV-110 building blocks highlighted followed by the caption
