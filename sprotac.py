@@ -372,15 +372,15 @@ def mol_to_image(mol, size=(300, 300)):
 
 # Streamlit app------------------------------------------------------------------------------------------------------
 def main():
-    st.markdown("""
-        <head>
-            <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
-        </head>
-            <div style="text-align: center; font-family: 'Playfair Display', sans-serif; font-size: 32px;">
-            Bellerophon <br> a PROTAC splitting tool
-        </div>
-        """, unsafe_allow_html=True)
-    st.image("arv-110-2.svg", use_container_width=True) # figure of ARV-110 building blocks highlighted followed by the caption
+    #st.markdown("""
+    #    <head>
+    #        <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+    #    </head>
+    #        <div style="text-align: center; font-family: 'Playfair Display', sans-serif; font-size: 32px;">
+    #        Bellerophon <br> PROTAC splitting tool
+    #    </div>
+    #    """, unsafe_allow_html=True)
+    st.image("bellerophon_GA.svg", use_container_width=True) # belleforophon logo highlighted followed by the caption
     st.write("")
     st.markdown('<div style="text-align: justify"><b>PROTACs</b>, PROteolysis TARgeting Chimeras are heterobifunctional molecules capable of recruiting the ubiquitination complex and to cause the <b>degradation of the target protein</b>. PROTACs are made of three components, a <b>warhead</b> that binds the target, an <b>E3 ligand</b> that recruits the E3 ligase -part of the ubiquitination complex- and a <b>linker</b> joining these moieties. This tool allows to split PROTACs into their components. Warheads (currently 362 unique ligands) and e3 ligand (currently 75 unique ligands) are retrieved from <a href="http://cadd.zju.edu.cn/protacdb/">PROTAC-DB</a>. We hope this will help you investigating PROTACs building block properties and combining them for new design ideas.</div>', unsafe_allow_html=True)
     st.write("")
