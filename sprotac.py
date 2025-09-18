@@ -34,9 +34,9 @@ def mol_from_smiles(mol):
     return None
 
 # Load and process the SDF files
-warhead_df = load_and_process_sdf('warhead-protacdb-06-05-2024.sdf')
+warhead_df = load_and_process_sdf('default_warhead.sdf')
 warhead_df = warhead_df.dropna(subset=['Mol'])
-e3_df = load_and_process_sdf('e3-ligand-protacdb-06-05-2024.sdf')
+e3_df = load_and_process_sdf('default_E3ligand.sdf')
 e3_df = e3_df.dropna(subset=['Mol'])
 
 # warhead and e3 ligand dataset curation
@@ -56,7 +56,7 @@ def split_protac(protac_smiles, warhead_df, e3_df):
 
     results = []
     results_df1 = []
-    #matched_warheads = [] for debugging
+    #matched_warheads = [] #debugging option
 
     for _, warhead_row in warhead_df.iterrows():
         warhead_mol = warhead_row['Mol']
@@ -114,7 +114,10 @@ def split_protac(protac_smiles, warhead_df, e3_df):
 
     #st.image(Draw.MolToImage(protac_mol, size=(500, 500)), caption='protac mol') #debugging option
     #st.image(Draw.MolToImage(warhead_mol, size=(500, 500)), caption='warhead mol') #debugging option
-    #st.image(Draw.MolToImage(linker_mol, size=(500, 500)), caption='linker mol') #debugging option
+    #if 'linker_mol' in locals() and linker_mol is not None: #debugging option
+    #    st.image(Draw.MolToImage(linker_mol, size=(500, 500)), caption='linker mol') #debugging option
+    #else: #debugging option
+    #    st.warning("No linker molecule was generated for this PROTAC") #debugging option
     #st.write('protac smiles: ', protac_smiles) #debugging option
     #st.write('warhead smiles: ', Chem.MolToSmiles(warhead_mol)) #debugging option
     #st.write('Number of warhead found: ', len(w_name)) #debugging option
@@ -212,17 +215,17 @@ def split_protac(protac_smiles, warhead_df, e3_df):
     final_df = final_df[final_df['Ring count check'] == True]
     
     #Adding chembl and pubchem info for warhead and E3 ligand from the intial dataset warhead_df and e3_df
-    f_warhead_df = warhead_df[['Compound ID', 'Target', 'Name', 'PubChem', 'ChEMBL']].copy()
-    f_e3_df = e3_df[['Compound ID', 'Target', 'Name', 'PubChem', 'ChEMBL']].copy()
+    f_warhead_df = warhead_df[['Compound ID']].copy()
+    f_e3_df = e3_df[['Compound ID']].copy()
 
     if 'Compound ID' in f_warhead_df.columns:
-        selected_columns_warhead = ['Compound ID', 'Target', 'Name', 'PubChem', 'ChEMBL']
+        selected_columns_warhead = ['Compound ID']
         final_df = pd.merge(final_df, f_warhead_df[selected_columns_warhead], 
                                 left_on='warhead ID', right_on='Compound ID', 
                                 suffixes=('_warhead', '_warhead'), how='left')
 
     if 'Compound ID' in f_e3_df.columns:
-        selected_columns_e3 = ['Compound ID', 'Target', 'Name', 'PubChem', 'ChEMBL']
+        selected_columns_e3 = ['Compound ID']
         final_df = pd.merge(final_df, f_e3_df[selected_columns_e3], 
                                 left_on='E3 ID', right_on='Compound ID', 
                                 suffixes=('_warhead', '_E3'), how='left')
@@ -230,75 +233,6 @@ def split_protac(protac_smiles, warhead_df, e3_df):
     final_df.drop(['Compound ID_warhead', 'Compound ID_E3'], axis=1, inplace=True)
 
     return final_df
-
-
-# Function to retrieve and display molecular properties from PubChem using the pubchem ID present in the warhead and E3 ligand dataframe
-def retrieve_and_display_pubchem_properties(pubchem_id, smiles, title):
-    if not pd.isna(pubchem_id):
-        try:
-            pubchem_id_numeric = float(pubchem_id)
-        except ValueError:
-            st.error("Error: Invalid PubChem ID. PubChem ID must be a numeric value.")
-            return
-        if np.isnan(pubchem_id_numeric):
-            st.error("Error: PubChem ID cannot be NaN.")
-            return
-        
-        url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{pubchem_id}/property/MolecularFormula,MolecularWeight,CanonicalSMILES,TPSA,Charge,HBondDonorCount,HBondAcceptorCount,RotatableBondCount/JSON"
-        
-        response = requests.get(url)
-        if response.status_code == 200:
-            data = response.json()
-            properties = {}
-            try:
-                properties_data = data['PropertyTable']['Properties'][0]
-                properties = {
-                    "Molecular Formula": properties_data.get("MolecularFormula"),
-                    "Molecular Weight": properties_data.get("MolecularWeight"),
-                    "Canonical SMILES": properties_data.get("CanonicalSMILES"),
-                    "TPSA": properties_data.get("TPSA"),
-                    "Charge": properties_data.get("Charge"),
-                    "Hydrogen Bond Donor Count": properties_data.get("HBondDonorCount"),
-                    "Hydrogen Bond Acceptor Count": properties_data.get("HBondAcceptorCount"),
-                    "Rotatable Bond Count": properties_data.get("RotatableBondCount")
-                }
-            except (KeyError, IndexError):
-                st.error("Error: Unable to retrieve properties from the response.")
-                return
-            
-            st.markdown(f"### {title} molecular properties")
-            properties_table = {
-                "Molecular Formula": properties.get('Molecular Formula'),
-                "Molecular Weight (g/mol)": properties.get('Molecular Weight'),
-                "Canonical SMILES": properties.get('Canonical SMILES'),
-                "TPSA (Å²)": properties.get('TPSA'),
-                "Charge": properties.get('Charge'),
-                "Hydrogen Bond Donor Count": properties.get('Hydrogen Bond Donor Count'),
-                "Hydrogen Bond Acceptor Count": properties.get('Hydrogen Bond Acceptor Count'),
-                "Rotatable Bond Count": properties.get('Rotatable Bond Count')
-            } 
-            st.write(f"PubChem ID: [{pubchem_id}](https://pubchem.ncbi.nlm.nih.gov/compound/{pubchem_id})")
-            st.table(properties_table)
-            st.markdown('Molecular properties calculated by PubChem.')
-        #else:
-        #    st.error(f"Error: Unable to fetch data from PubChem for the {title}.")
-    else:
-        st.error("No PubChem ID retrieved.")
-        if isinstance(smiles, str):
-            st.write(f"The {title} provided: {smiles}")
-            # Check if the provided SMILES string is valid
-            mol = Chem.MolFromSmiles(smiles)
-            if mol:
-                # Kekulize the molecule
-                st.image(Draw.MolToImage(mol))
-            else:
-                st.error("Invalid SMILES string provided. Please provide a valid SMILES.")
-
-        elif smiles is not None and not smiles.empty:
-            st.write("Here you can find a list of the most similar compounds present in PubChem:")
-            perform_similarity_search(smiles)
-        else:
-            st.write("No DataFrame provided or DataFrame is empty.")
     
 # Function to search for similar compounds to the warhead or the E3 ligand if the pubchem ID is not present in the original dataframe    
 def perform_similarity_search(query_smiles, threshold=90, max_records=3):
@@ -370,71 +304,127 @@ def process_similar_compound(cid, query_smiles):
 def mol_to_image(mol, size=(300, 300)):
     return Draw.MolToImage(mol, size=size)
 
-# Streamlit app------------------------------------------------------------------------------------------------------
+#Streamlit app--------------------------------------------------------------
+import io
 def main():
-    #st.markdown("""
-    #    <head>
-    #        <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
-    #    </head>
-    #        <div style="text-align: center; font-family: 'Playfair Display', sans-serif; font-size: 32px;">
-    #        Bellerophon <br> PROTAC splitting tool
-    #    </div>
-    #    """, unsafe_allow_html=True)
-    st.image("bellerophon_GA.svg", use_container_width=True) # belleforophon logo highlighted followed by the caption
+    st.image("bellerophon_GA.svg") 
     st.write("")
-    st.markdown('<div style="text-align: justify"><b>PROTACs</b>, PROteolysis TARgeting Chimeras are heterobifunctional molecules capable of recruiting the ubiquitination complex and to cause the <b>degradation of the target protein</b>. PROTACs are made of three components, a <b>warhead</b> that binds the target, an <b>E3 ligand</b> that recruits the E3 ligase -part of the ubiquitination complex- and a <b>linker</b> joining these moieties. This tool allows to split PROTACs into their components. Warheads (currently 362 unique ligands) and e3 ligand (currently 75 unique ligands) are retrieved from <a href="http://cadd.zju.edu.cn/protacdb/">PROTAC-DB</a>. We hope this will help you investigating PROTACs building block properties and combining them for new design ideas.</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align: justify"><b>PROTACs</b>, PROteolysis TArgeting Chimeras, are innovative molecules that degrade disease-related proteins by joining a warhead and an E3 ligase ligand through a linker. Despite their potential, no dedicated tool has existed to easily dissect their structures. <b>Bellerophon</b> fills this gap: a free, intuitive platform that splits PROTACs into their components, streamlining data curation, high-throughput analysis, and rational design.</div>', unsafe_allow_html=True)
     st.write("")
-    st.markdown("**Enter your PROTAC SMILES below:**")
-    protac_smiles = st.text_input("PROTAC SMILES") # smiles as input
 
-    if st.button("Split PROTAC"):
-        if protac_smiles:
+    # Upload datasets (warheads/E3)
+    st.markdown("**Upload your datasets (optional):**")
+    warhead_file = st.file_uploader("Upload Warhead SDF", type=["sdf"])
+    e3_file = st.file_uploader("Upload E3 Ligand SDF", type=["sdf"])
+
+    if warhead_file:
+        warhead_df = load_and_process_sdf(warhead_file)
+    else:
+        warhead_df = load_and_process_sdf('default_warhead.sdf')
+
+    if e3_file:
+        e3_df = load_and_process_sdf(e3_file)
+    else:
+        e3_df = load_and_process_sdf('default_E3ligand.sdf')
+
+    warhead_df = warhead_df.dropna(subset=['Mol']).drop_duplicates(subset='Smiles', keep='first')
+    e3_df = e3_df.dropna(subset=['Mol']).drop_duplicates(subset='Smiles', keep='first')
+
+    st.markdown("**Provide your PROTACs (choose one option):**")
+    input_mode = st.radio("Input mode", ["Paste text", "Upload file"])
+
+    protac_entries = []
+    if input_mode == "Paste text":
+        st.markdown("Format: `Name SMILES` (one per line, separated by space or tab).")
+        protac_input = st.text_area("Enter PROTAC names + SMILES")
+        if protac_input.strip():
+            for line in protac_input.splitlines():
+                parts = line.strip().split()
+                if len(parts) >= 2:
+                    name = parts[0]
+                    smiles = parts[1]
+                    protac_entries.append((name, smiles))
+                else:
+                    st.warning(f"Skipping invalid line: {line}")
+
+    elif input_mode == "Upload file":
+        uploaded_file = st.file_uploader("Upload TXT/CSV file with Protac Name + SMILES", type=["txt", "csv", "sdf"])
+        if uploaded_file:
+            if uploaded_file.name.endswith(".sdf"):
+                sdf_df = PandasTools.LoadSDF(uploaded_file)
+                if {"Protac Name", "Protac SMILES"}.issubset(sdf_df.columns):
+                    for _, row in sdf_df.iterrows():
+                        protac_entries.append((row["Protac Name"], row["Protac SMILES"]))
+                else:
+                    st.error("SDF must contain 'Protac Name' and 'Protac SMILES' fields.")
+            else:
+                df = pd.read_csv(uploaded_file, sep=None, engine="python")  # auto-detects comma/tab
+                if {"Protac Name", "Protac SMILES"}.issubset(df.columns):
+                    for _, row in df.iterrows():
+                        protac_entries.append((row["Protac Name"], row["Protac SMILES"]))
+                else:
+                    st.error("File must contain columns 'Protac Name' and 'Protac SMILES'.")
+
+    if st.button("Split PROTACs"):
+        if not protac_entries:
+            st.error("No valid PROTACs provided.")
+            return
+
+        clean_results = []
+        all_results = []
+
+        for name, protac_smiles in protac_entries:
             m = Chem.MolFromSmiles(protac_smiles, sanitize=False)
             if m is None:
-                st.error('Invalid SMILES, please check for typos')
-                return
-            else:
-                try:
-                    Chem.SanitizeMol(m)
-                except:
-                    st.error('Invalid chemistry, please provide a correct SMILES')
-                    return
-            
-            final_df = split_protac(protac_smiles, warhead_df, e3_df) # applying the function for protac splitting and check (line 42-223)
-            st.subheader("Splitting Results:")
-            
-            columns_to_display = ['Protac SMILES', 'Warhead SMILES', 'E3 SMILES', 'Linker SMILES']
-            st.write(final_df[columns_to_display])
-            #st.write(final_df) # debugging 
-            IPythonConsole.ipython_useSVG = True  # Change output to SVG
-            
-            if final_df.empty:
-                st.write("No matches found for the provided PROTAC SMILES.")
-            else:
-                for idx, row in final_df.iterrows():
-                        st.markdown(f"**Protac 2D structure**")
-                        st.image(Draw.MolToImage(row['Protac Mol'], size=(500, 500)), use_container_width=False, output_format='PNG')
-                        col1, col2, col3 = st.columns(3)
-                        col1.image(Draw.MolToImage(row['Warhead Mol'], size=(250, 300)), caption="Warhead", use_container_width=False)
-                        col2.image(Draw.MolToImage(row['Final Linker Mol'], size=(250, 300)), caption="Linker", use_container_width=False)
-                        col3.image(Draw.MolToImage(row['E3 Mol'], size=(250, 300)), caption="E3 ligand", use_container_width=False)
-                        st.markdown("---") 
-                        #st.write(final_df) debugging function only
-                # warhead: adding links to PubChem page 
-                if row.get('PubChem_warhead') is not None:
-                    pubchem_id = row['PubChem_warhead']
-                    smiles = final_df['Warhead SMILES'].iloc[0]
-                    title = "Warhead"
-                retrieve_and_display_pubchem_properties(pubchem_id, smiles, title)
+                st.warning(f"Invalid SMILES skipped: {name} ({protac_smiles})")
+                continue
+            try:
+                Chem.SanitizeMol(m)
+            except:
+                st.warning(f"Invalid chemistry skipped: {name} ({protac_smiles})")
+                continue
 
-                # e3 ligand: adding links to PubChem page 
-                if row.get('PubChem_E3') is not None:
-                    pubchem_id = row['PubChem_E3']
-                    smiles = final_df['E3 SMILES'].iloc[0]
-                    title = "E3 ligand"
-                retrieve_and_display_pubchem_properties(pubchem_id, smiles, title)
-    
-    st.markdown("---")
+            final_df = split_protac(protac_smiles, warhead_df, e3_df)
+            if not final_df.empty:
+                all_results.append((name, final_df))
+                for _, row in final_df.iterrows():
+                    clean_results.append({
+                        "Protac Name": name,
+                        "Protac SMILES": row["Protac SMILES"],
+                        "Warhead SMILES": row["Warhead SMILES"],
+                        "E3 SMILES": row["E3 SMILES"],
+                        "Linker SMILES": row["Linker SMILES"]
+                    })
+
+        if clean_results:
+            clean_df = pd.DataFrame(clean_results)
+
+            # Download buttons before showing results
+            csv_buffer = io.StringIO()
+            clean_df.to_csv(csv_buffer, index=False)
+            st.download_button("💾 Download results as CSV", csv_buffer.getvalue(),
+                               file_name="protac_splitting_results.csv", mime="text/csv")
+
+            txt_buffer = io.StringIO()
+            clean_df.to_csv(txt_buffer, index=False, sep="\t")
+            st.download_button("📄 Download results as TXT", txt_buffer.getvalue(),
+                               file_name="protac_splitting_results.txt", mime="text/plain")
+
+            # Detailed per-PROTAC visualization
+            for name, final_df in all_results:
+                protac_smiles = final_df["Protac SMILES"].iloc[0]
+                st.subheader(f"Results for {name}: {protac_smiles}")
+                st.write(final_df[['Protac SMILES', 'Warhead SMILES', 'E3 SMILES', 'Linker SMILES']])
+
+                for _, row in final_df.iterrows():
+                    st.markdown("**Protac 2D structure**")
+                    st.image(Draw.MolToImage(row['Protac Mol'], size=(500, 500)), output_format='PNG')
+                    col1, col2, col3 = st.columns(3)
+                    col1.image(Draw.MolToImage(row['Warhead Mol'], size=(250, 300)), caption="Warhead")
+                    col2.image(Draw.MolToImage(row['Final Linker Mol'], size=(250, 300)), caption="Linker")
+                    col3.image(Draw.MolToImage(row['E3 Mol'], size=(250, 300)), caption="E3 ligand")
+                    st.markdown("---")
+
 
     st.markdown('<div style="text-align: center; font-size: 13px;"> Last updated from PROTAC-DB on 06/05/2024. </div>', unsafe_allow_html=True)
     st.image("logo.svg", width=200)
@@ -442,15 +432,15 @@ def main():
     st.markdown("Splitting PROTAC is developed by CASSMedChem group from University of Turin in collaboration with [Alvascience](https://www.alvascience.com/). The Service is meant for non-commercial use only. For info, problems or a personalized version contact giulia.apprato@unito.it")
     st.sidebar.markdown("### You may be interested into our PROTAC-related works")
     st.sidebar.markdown("[1. DegraderTCM, ternary complex modeling and PROTACs ranking](https://pubs.acs.org/doi/10.1021/acsmedchemlett.3c00362)")
-    st.sidebar.image("degradertcm.svg", use_container_width=True)
+    st.sidebar.image("degradertcm.svg")
     st.sidebar.markdown("[2. ChamelogK, experimental descriptor of chamaleonicity](https://pubs.acs.org/doi/10.1021/acs.jmedchem.3c00823)")
-    st.sidebar.image("chamelogk.svg", use_container_width=True)
+    st.sidebar.image("chamelogk.svg")
     st.sidebar.markdown("[3. Orally bioavailable PROTACs chemical space](https://www.sciencedirect.com/science/article/pii/S1359644624000424?via%3Dihub)")
-    st.sidebar.image("orally_bioavailable.svg", use_container_width=True)
+    st.sidebar.image("orally_bioavailable.svg")
     st.sidebar.markdown("[4. PROTACs screening pipeline weaknesses](https://pubs.acs.org/doi/full/10.1021/acsmedchemlett.3c00231)")
-    st.sidebar.image("protacs_pipeline.svg", use_container_width=True)
+    st.sidebar.image("protacs_pipeline.svg")
     st.sidebar.markdown("[5. Designing soluble PROTACs](https://pubs.acs.org/doi/full/10.1021/acs.jmedchem.2c00201)")
-    st.sidebar.image("protacs_solubility.svg", use_container_width=True)       
+    st.sidebar.image("protacs_solubility.svg")       
 
 if __name__ == "__main__":
     main()
