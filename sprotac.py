@@ -231,89 +231,33 @@ def split_protac(protac_smiles, warhead_df, e3_df):
                                 suffixes=('_warhead', '_E3'), how='left')
 
     final_df.drop(['Compound ID_warhead', 'Compound ID_E3'], axis=1, inplace=True)
+    if {'Warhead SMILES', 'Linker SMILES', 'E3 SMILES'}.issubset(final_df.columns): # Remove duplicate solutions
+        final_df = final_df.drop_duplicates(subset=['Warhead SMILES', 'Linker SMILES', 'E3 SMILES'], keep='first')
 
     return final_df
-    
-# Function to search for similar compounds to the warhead or the E3 ligand if the pubchem ID is not present in the original dataframe    
-def perform_similarity_search(query_smiles, threshold=90, max_records=3):
-    # Construct the query URL for similarity search
-    url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/fastsimilarity_2d/smiles/{query_smiles}/cids/JSON?Threshold={threshold}&MaxRecords={max_records}"
-
-    # Send a GET request to PubChem REST API
-    response = requests.get(url)
-
-    if response.status_code == 200:
-        # Parse the JSON response
-        data = response.json()
-        
-        if 'IdentifierList' in data:
-            # Extract similar compound CIDs
-            similar_cids = data['IdentifierList']['CID']
-            #st.markdown("Similar CIDs:"+ str(similar_cids))
-            
-            # Optionally, retrieve additional information for each CID
-            for cid in similar_cids:
-                # Process each similar compound CID (e.g., retrieve additional information)
-                process_similar_compound(cid, query_smiles)
-        else:
-            st.markdown("No similar compounds found.")
-    else:
-        st.markdown("Error: Failed to retrieve data from PubChem.")
-        st.markdown(f"Error: Failed to retrieve data from PubChem. Response status code: {response.status_code}")
-
-def process_similar_compound(cid, query_smiles):
-    compound_data = []
-    # Retrieve additional information for a similar compound CID
-    url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{cid}/property/CanonicalSMILES/JSON"
-    response = requests.get(url)
-    
-    if response.status_code == 200:
-        data = response.json()
-        # Process the retrieved data (e.g., extract SMILES)
-        smiles = data['PropertyTable']['Properties'][0]['CanonicalSMILES']
-        
-        # Calculate similarity using Tanimoto coefficient
-        mol1 = Chem.MolFromSmiles(query_smiles)
-        mol2 = Chem.MolFromSmiles(smiles)
-        fp1 = AllChem.GetMorganFingerprint(mol1, 2)
-        fp2 = AllChem.GetMorganFingerprint(mol2, 2)
-        similarity = AllChem.DataStructs.TanimotoSimilarity(fp1, fp2)
-        
-        # Add the data to the list
-        compound_data.append({
-            "Compound CID": cid,
-            "SMILES": smiles,
-            "Similarity": similarity,
-        })
-        
-        compound_df = pd.DataFrame(compound_data)
-        st.table(compound_df)
-        st.write(f"CID: [{cid}](https://pubchem.ncbi.nlm.nih.gov/compound/{cid})")
-        # Convert SMILES to Mol object
-        mol = Chem.MolFromSmiles(smiles)
-        
-        # Display the Mol object as an image
-        if mol:
-            st.image(Draw.MolToImage(mol))
-        else:
-            st.error("Error: Failed to generate Mol object from SMILES.")
-    else:
-        st.error(f"Error: Failed to retrieve data for compound CID {cid}.")
-    
+          
 # Convert RDKit Mol objects to images
 def mol_to_image(mol, size=(300, 300)):
     return Draw.MolToImage(mol, size=size)
 
 #Streamlit app--------------------------------------------------------------
 import io
+import streamlit.components.v1 as components
 def main():
     st.image("bellerophon_GA.svg") 
     st.write("")
-    st.markdown('<div style="text-align: justify"><b>PROTACs</b>, PROteolysis TArgeting Chimeras, are innovative molecules that degrade disease-related proteins by joining a warhead and an E3 ligase ligand through a linker. Despite their potential, no dedicated tool has existed to easily dissect their structures. <b>Bellerophon</b> fills this gap: a free, intuitive platform that splits PROTACs into their components, streamlining data curation, high-throughput analysis, and rational design.</div>', unsafe_allow_html=True)
+    st.markdown(
+    '<div style="text-align: justify">'
+    'Bellerophon is a computational tool designed to automatically split PROTACs into their three components: warhead, linker, and E3 ligase ligand.<br><br>'
+    'It identifies the warhead and E3 ligand from a curated library, either the default one provided by the authors or a user-uploaded version. Users can input PROTACs by pasting the name and SMILES or uploading a file.<br><br>'
+    'Bellerophon supports data curation and rational design by enabling the comparison and recombination of validated building blocks for efficient PROTAC discovery.'
+    '</div>',
+    unsafe_allow_html=True
+)
     st.write("")
 
     # Upload datasets (warheads/E3)
-    st.markdown("**Upload your datasets (optional):**")
+    st.markdown("**Upload your libraries (default ones will be used otherwise):**")
     warhead_file = st.file_uploader("Upload Warhead SDF", type=["sdf"])
     e3_file = st.file_uploader("Upload E3 Ligand SDF", type=["sdf"])
 
@@ -332,11 +276,9 @@ def main():
 
     st.markdown("**Provide your PROTACs (choose one option):**")
     input_mode = st.radio("Input mode", ["Paste text", "Upload file"])
-
     protac_entries = []
     if input_mode == "Paste text":
-        st.markdown("Format: `Name SMILES` (one per line, separated by space or tab).")
-        protac_input = st.text_area("Enter PROTAC names + SMILES")
+        protac_input = st.text_area("Enter PROTAC name followed by a tab/space and PROTAC SMILES (more than one compound can be pasted)")
         if protac_input.strip():
             for line in protac_input.splitlines():
                 parts = line.strip().split()
@@ -348,22 +290,22 @@ def main():
                     st.warning(f"Skipping invalid line: {line}")
 
     elif input_mode == "Upload file":
-        uploaded_file = st.file_uploader("Upload TXT/CSV file with Protac Name + SMILES", type=["txt", "csv", "sdf"])
+        uploaded_file = st.file_uploader("Upload TXT/CSV file with PROTAC name followed by a tab/space and PROTAC SMILES (one compound per line)", type=["txt", "csv", "sdf"])
         if uploaded_file:
             if uploaded_file.name.endswith(".sdf"):
                 sdf_df = PandasTools.LoadSDF(uploaded_file)
-                if {"Protac Name", "Protac SMILES"}.issubset(sdf_df.columns):
+                if {"Name", "Smiles"}.issubset(sdf_df.columns):
                     for _, row in sdf_df.iterrows():
-                        protac_entries.append((row["Protac Name"], row["Protac SMILES"]))
+                        protac_entries.append((row["Name"], row["Smiles"]))
                 else:
-                    st.error("SDF must contain 'Protac Name' and 'Protac SMILES' fields.")
+                    st.error("SDF must contain 'Name' and 'Smiles' fields.")
             else:
                 df = pd.read_csv(uploaded_file, sep=None, engine="python")  # auto-detects comma/tab
-                if {"Protac Name", "Protac SMILES"}.issubset(df.columns):
+                if {"Name", "Smiles"}.issubset(df.columns):
                     for _, row in df.iterrows():
-                        protac_entries.append((row["Protac Name"], row["Protac SMILES"]))
+                        protac_entries.append((row["Name"], row["Smiles"]))
                 else:
-                    st.error("File must contain columns 'Protac Name' and 'Protac SMILES'.")
+                    st.error("File must contain columns 'Name' and 'Smiles'.")
 
     if st.button("Split PROTACs"):
         if not protac_entries:
@@ -397,49 +339,141 @@ def main():
                     })
 
         if clean_results:
+            # Add a 'Solution' column corresponding to each solution number per PROTAC
             clean_df = pd.DataFrame(clean_results)
+            clean_df['Solution'] = clean_df.groupby('Protac Name').cumcount() + 1
+
+            # Reorder columns for clarity
+            cols = ['Protac Name', 'Solution', 'Protac SMILES', 'Warhead SMILES', 'E3 SMILES', 'Linker SMILES']
+            clean_df = clean_df[cols]
 
             # Download buttons before showing results
             csv_buffer = io.StringIO()
             clean_df.to_csv(csv_buffer, index=False)
             st.download_button("💾 Download results as CSV", csv_buffer.getvalue(),
-                               file_name="protac_splitting_results.csv", mime="text/csv")
+                            file_name="protac_splitting_results.csv", mime="text/csv")
 
             txt_buffer = io.StringIO()
             clean_df.to_csv(txt_buffer, index=False, sep="\t")
             st.download_button("📄 Download results as TXT", txt_buffer.getvalue(),
-                               file_name="protac_splitting_results.txt", mime="text/plain")
+                            file_name="protac_splitting_results.txt", mime="text/plain")
 
             # Detailed per-PROTAC visualization
-            for name, final_df in all_results:
-                protac_smiles = final_df["Protac SMILES"].iloc[0]
-                st.subheader(f"Results for {name}: {protac_smiles}")
-                st.write(final_df[['Protac SMILES', 'Warhead SMILES', 'E3 SMILES', 'Linker SMILES']])
+            #for name, final_df in all_results:
+            #    st.subheader(f"Results for {name}:")
+            #    st.write(final_df[['Protac SMILES', 'Warhead SMILES', 'E3 SMILES', 'Linker SMILES']])
 
-                for _, row in final_df.iterrows():
-                    st.markdown("**Protac 2D structure**")
-                    st.image(Draw.MolToImage(row['Protac Mol'], size=(500, 500)), output_format='PNG')
-                    col1, col2, col3 = st.columns(3)
-                    col1.image(Draw.MolToImage(row['Warhead Mol'], size=(250, 300)), caption="Warhead")
-                    col2.image(Draw.MolToImage(row['Final Linker Mol'], size=(250, 300)), caption="Linker")
-                    col3.image(Draw.MolToImage(row['E3 Mol'], size=(250, 300)), caption="E3 ligand")
-                    st.markdown("---")
+            for i, (_, row) in enumerate(final_df.iterrows(), start=1):
+                st.markdown(f"### Solution {i}")
+                st.image(Draw.MolToImage(row['Protac Mol'], size=(500, 500)), output_format='PNG')
+                col1, col2, col3 = st.columns(3)
+                col1.image(Draw.MolToImage(row['Warhead Mol'], size=(250, 300)), caption="Warhead")
+                col2.image(Draw.MolToImage(row['Final Linker Mol'], size=(250, 300)), caption="Linker")
+                col3.image(Draw.MolToImage(row['E3 Mol'], size=(250, 300)), caption="E3 ligand")
+                st.markdown("---")
 
 
-    st.markdown('<div style="text-align: center; font-size: 13px;"> Last updated from PROTAC-DB on 06/05/2024. </div>', unsafe_allow_html=True)
-    st.image("logo.svg", width=200)
-    st.image("alvascience_logo.png", width=200)
-    st.markdown("Splitting PROTAC is developed by CASSMedChem group from University of Turin in collaboration with [Alvascience](https://www.alvascience.com/). The Service is meant for non-commercial use only. For info, problems or a personalized version contact giulia.apprato@unito.it")
+    st.markdown('<div style="text-align: center; font-size: 13px;"><i> Libraries last updated on 01/10/2025 (warhead and E3 ligand collections). </i></div>', unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.image("logos.svg", width=350)
+    st.markdown("Splitting PROTAC is developed by MedChemBeyond group from University of Turin in collaboration with [Alvascience](https://www.alvascience.com/). The Service is meant for non-commercial use only. For info, problems or a personalized version contact giulia.apprato@unito.it")
     st.sidebar.markdown("### You may be interested into our PROTAC-related works")
-    st.sidebar.markdown("[1. DegraderTCM, ternary complex modeling and PROTACs ranking](https://pubs.acs.org/doi/10.1021/acsmedchemlett.3c00362)")
+    st.sidebar.markdown(
+    """
+    <div style="font-size:16px;">
+        <a href="https://pubs.acs.org/doi/full/10.1021/acs.jmedchem.5c01497" target="_blank">
+            <b>Linker methylation as a strategy to enhance PROTAC oral bioavailability</b>
+        </a><br>
+        <span style="font-size:13px; font-style:italic;">J. Med. Chem., 2025</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+    st.sidebar.image("linker-methylation.svg")
+    st.sidebar.markdown(
+    """
+    <div style="font-size:16px;">
+        <a href="https://pubs.acs.org/doi/10.1021/acs.jmedchem.4c01200" target="_blank">
+            <b>IMHB-mediated chameleonicity in drug design</b>
+        </a><br>
+        <span style="font-size:13px; font-style:italic;">J. Med. Chem., 2024</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+    st.sidebar.image("IMHB-cham.svg")
+    st.sidebar.markdown(
+    """
+    <div style="font-size:16px;">
+        <a href="https://www.tandfonline.com/doi/full/10.1080/17460441.2025.2467195" target="_blank">
+            <b>ADME and PK/PD optimization towards oral PROTACs</b>
+        </a><br>
+        <span style="font-size:13px; font-style:italic;">Expert Opin. Drug Discov., 2024</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+    st.sidebar.image("DMPK-review.svg")
+    st.sidebar.markdown(
+    """
+    <div style="font-size:16px;">
+        <a href="https://pubs.acs.org/doi/10.1021/acsmedchemlett.3c00362" target="_blank">
+            <b>DegraderTCM and ternary complex modeling</b>
+        </a><br>
+        <span style="font-size:13px; font-style:italic;">ACS Med. Chem. Letters, 2023</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
     st.sidebar.image("degradertcm.svg")
-    st.sidebar.markdown("[2. ChamelogK, experimental descriptor of chamaleonicity](https://pubs.acs.org/doi/10.1021/acs.jmedchem.3c00823)")
+    st.sidebar.markdown(
+    """
+    <div style="font-size:16px;">
+        <a href="https://pubs.acs.org/doi/10.1021/acs.jmedchem.3c00823" target="_blank">
+            <b>ChamelogK, experimental descriptor of chamaleonicity</b>
+        </a><br>
+        <span style="font-size:13px; font-style:italic;">J. Med. Chem., 2023</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
     st.sidebar.image("chamelogk.svg")
-    st.sidebar.markdown("[3. Orally bioavailable PROTACs chemical space](https://www.sciencedirect.com/science/article/pii/S1359644624000424?via%3Dihub)")
+    st.sidebar.markdown(
+    """
+    <div style="font-size:16px;">
+        <a href="https://doi.org/10.1016/j.drudis.2024.103917" target="_blank">
+            <b>Exploring the chemical space of orally bioavailable PROTACs</b>
+        </a><br>
+        <span style="font-size:13px; font-style:italic;">Drug Discov. Today, 2024</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
     st.sidebar.image("orally_bioavailable.svg")
-    st.sidebar.markdown("[4. PROTACs screening pipeline weaknesses](https://pubs.acs.org/doi/full/10.1021/acsmedchemlett.3c00231)")
+    st.sidebar.markdown(
+    """
+    <div style="font-size:16px;">
+        <a href="https://pubs.acs.org/doi/full/10.1021/acsmedchemlett.3c00231" target="_blank">
+            <b>PROTACs screening pipeline weaknesses</b>
+        </a><br>
+        <span style="font-size:13px; font-style:italic;">ACS Med. Chem. Letters, 2023</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
     st.sidebar.image("protacs_pipeline.svg")
-    st.sidebar.markdown("[5. Designing soluble PROTACs](https://pubs.acs.org/doi/full/10.1021/acs.jmedchem.2c00201)")
+    st.sidebar.markdown(
+    """
+    <div style="font-size:16px;">
+        <a href="https://pubs.acs.org/doi/full/10.1021/acs.jmedchem.2c00201" target="_blank">
+            <b>Designing soluble PROTACs</b>
+        </a><br>
+        <span style="font-size:13px; font-style:italic;">J. Med. Chem., 2022</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
     st.sidebar.image("protacs_solubility.svg")       
 
 if __name__ == "__main__":
