@@ -47,198 +47,512 @@ e3_df['Smiles'] = e3_df['Smiles'].apply(lambda smiles: rdMolStandardize.Standard
 e3_df['Mol'] = e3_df['Smiles'].apply(mol_from_smiles)
 e3_df = e3_df.drop_duplicates(subset='Smiles', keep='first') # 82 unique e3 ligands
 
+#--------------------- Debugging function ---------------------
+def split_protac_debug(protac_name, protac_mol, warhead_df, e3_df):
+    """Debug version with many checkpoints (writes to Streamlit UI and terminal)."""
+    import traceback
+    # quick helper to log both app and terminal
+    def log(msg, level="info"):
+        # use different display styles if desired
+        if level == "error":
+            st.error(msg)
+        elif level == "warning":
+            st.warning(msg)
+        else:
+            st.info(msg)
+        print(msg)
+
+    try:
+        log(f"[CP0] Entered split_protac for: {protac_name}")
+        if protac_mol is None:
+            log(f"[CP0.1] protac_mol is None for {protac_name} — aborting", "error")
+            return pd.DataFrame()
+
+        log("[CP1] protac_mol OK — starting warhead scan")
+
+        # Prepare containers
+        results = []
+        results_df1 = []
+        protac_matches = []
+        warhead_matched = False
+
+        # quick counters for library sizes
+        try:
+            n_warheads = len(warhead_df)
+            n_e3 = len(e3_df)
+        except Exception:
+            n_warheads = None
+            n_e3 = None
+        log(f"[CP1.1] warhead_df length: {n_warheads}, e3_df length: {n_e3}")
+
+        # --- WARHEAD MATCHING ---
+        warhead_loop_idx = 0
+        for _, warhead_row in warhead_df.iterrows():
+            warhead_loop_idx += 1
+            if warhead_loop_idx % 50 == 0:
+                log(f"[CP1.2] warhead loop iteration: {warhead_loop_idx}")
+
+            # validate warhead entry
+            if 'Mol' not in warhead_row or warhead_row['Mol'] is None:
+                # skip invalid entries quietly but log occasionally
+                if warhead_loop_idx % 100 == 0:
+                    log(f"[CP1.3] skipping invalid warhead row at idx {warhead_loop_idx}", "warning")
+                continue
+
+            warhead_mol = warhead_row['Mol']
+            if not isinstance(warhead_mol, Chem.Mol):
+                log(f"[CP1.4] non-Mol warhead at idx {warhead_loop_idx}", "warning")
+                continue
+
+            # try substructure matching with try/except
+            try:
+                matches = protac_mol.GetSubstructMatches(warhead_mol)
+            except Exception as e:
+                log(f"[CP1.5] Exception during GetSubstructMatches for warhead idx {warhead_loop_idx}: {e}", "warning")
+                print(traceback.format_exc())
+                continue
+
+            if matches:
+                log(f"[CP1.6] Found matches for warhead idx {warhead_loop_idx} (n_matches={len(matches)})")
+                w_name = warhead_row.get('Compound ID', f"warhead_idx_{warhead_loop_idx}")
+                for match in matches:
+                    try:
+                        linker_after_w = AllChem.DeleteSubstructs(protac_mol, warhead_mol)
+                    except Exception as e:
+                        log(f"[CP1.7] DeleteSubstructs(protac, warhead) failed: {e}", "warning")
+                        linker_after_w = None
+                    protac_matches.append({
+                        'Protac Mol': protac_mol,
+                        'Warhead Mol': warhead_mol,
+                        'Linker Mol': linker_after_w,
+                        'protac ID': protac_name,
+                        'warhead ID': w_name,
+                        'Protac SMILES': mol_to_smiles(protac_mol),
+                        'Warhead SMILES': mol_to_smiles(warhead_mol)
+                    })
+                warhead_matched = True
+
+        log(f"[CP2] Finished warhead loop — warhead_matched={warhead_matched}")
+
+        if not warhead_matched:
+            log(f"[CP2.1] No warhead matched for {protac_name}. Skipping PROTAC.", "warning")
+            return pd.DataFrame()
+
+        # append protac_matches to results
+        results.extend(protac_matches)
+        log(f"[CP2.2] protac_matches saved (count={len(protac_matches)})")
+
+        # --- E3 MATCHING ---
+        e3_loop_idx = 0
+        e3_matched = False
+        for _, e3_row in e3_df.iterrows():
+            e3_loop_idx += 1
+            if e3_loop_idx % 50 == 0:
+                log(f"[CP3] e3 loop iteration: {e3_loop_idx}")
+
+            if 'Mol' not in e3_row or e3_row['Mol'] is None:
+                if e3_loop_idx % 100 == 0:
+                    log(f"[CP3.1] skipping invalid e3 row at idx {e3_loop_idx}", "warning")
+                continue
+
+            e3_mol = e3_row['Mol']
+            if not isinstance(e3_mol, Chem.Mol):
+                log(f"[CP3.2] non-Mol e3 at idx {e3_loop_idx}", "warning")
+                continue
+
+            try:
+                matches = protac_mol.GetSubstructMatches(e3_mol)
+            except Exception as e:
+                log(f"[CP3.3] Exception during GetSubstructMatches for e3 idx {e3_loop_idx}: {e}", "warning")
+                print(traceback.format_exc())
+                continue
+
+            if matches:
+                log(f"[CP3.4] Found matches for E3 idx {e3_loop_idx} (n_matches={len(matches)})")
+                e3_name = e3_row.get('Compound ID', f"e3_idx_{e3_loop_idx}")
+                for match in matches:
+                    try:
+                        linker_after_e3 = AllChem.DeleteSubstructs(protac_mol, e3_mol)
+                    except Exception as e:
+                        log(f"[CP3.5] DeleteSubstructs(protac, e3) failed: {e}", "warning")
+                        linker_after_e3 = None
+                    results_df1.append({
+                        'Protac Mol': protac_mol,
+                        'E3 Mol': e3_mol,
+                        'Linker Mol': linker_after_e3,
+                        'E3 ID': e3_name,
+                        'E3 SMILES': mol_to_smiles(e3_mol)
+                    })
+                e3_matched = True
+
+        log(f"[CP4] Finished E3 loop — e3_matched={e3_matched} (results_df1 count={len(results_df1)})")
+
+        if not e3_matched:
+            log(f"[CP4.1] No E3 matched for {protac_name}. Skipping PROTAC.", "warning")
+            return pd.DataFrame()
+
+        # --- Build DataFrames and merge ---
+        try:
+            results_df = pd.DataFrame(results)
+            results_df1 = pd.DataFrame(results_df1)
+            log(f"[CP5] results_df rows: {len(results_df)}, results_df1 rows: {len(results_df1)}")
+        except Exception as e:
+            log(f"[CP5.1] Error building interim DataFrames: {e}", "error")
+            print(traceback.format_exc())
+            return pd.DataFrame()
+
+        if results_df.empty or results_df1.empty:
+            log("[CP5.2] One of interim DataFrames is empty — aborting", "warning")
+            return pd.DataFrame()
+
+        try:
+            final_df = pd.merge(results_df, results_df1, on='Protac Mol', how='inner')
+            log(f"[CP6] After merge, final_df rows: {len(final_df)}")
+        except Exception as e:
+            log(f"[CP6.1] Merge failed: {e}", "error")
+            print(traceback.format_exc())
+            return pd.DataFrame()
+
+        if final_df.empty:
+            log("[CP6.2] final_df empty after merge — aborting", "warning")
+            return pd.DataFrame()
+
+        # compute final linkers etc. (wrap in try to catch unexpected errors)
+        try:
+            final_df['Final Linker Mol'] = final_df.apply(
+                lambda row: (AllChem.DeleteSubstructs(row['Linker Mol_x'], row['E3 Mol'])
+                             if row['E3 Mol'] is not None and row['Linker Mol_x'] is not None and
+                                row['Linker Mol_x'].HasSubstructMatch(row['E3 Mol'])
+                             else None),
+                axis=1
+            )
+            log("[CP7] Computed Final Linker Mol")
+        except Exception as e:
+            log(f"[CP7.1] Error computing Final Linker Mol: {e}", "error")
+            print(traceback.format_exc())
+            return pd.DataFrame()
+
+        # (continue as in your validated function)...
+        # For brevity, perform the remaining validation steps but include a final checkpoint
+        try:
+            final_df['Linker Mol Check'] = final_df.apply(
+                lambda row: (AllChem.DeleteSubstructs(row['Linker Mol_y'], row['Warhead Mol'])
+                             if row['Warhead Mol'] is not None and row['Linker Mol_y'] is not None and
+                                row['Linker Mol_y'].HasSubstructMatch(row['Warhead Mol'])
+                             else None),
+                axis=1
+            )
+            final_df['Linker_check'] = final_df.apply(
+                lambda row: True if row['Final Linker Mol'] is not None and row['Linker Mol Check'] is not None and
+                mol_to_smiles(row['Final Linker Mol']) == mol_to_smiles(row['Linker Mol Check'])
+                else False,
+                axis=1
+            )
+            final_df = final_df[final_df['Linker_check'] == True].copy()
+            log(f"[CP8] Linker consistency checked — remaining rows: {len(final_df)}")
+        except Exception as e:
+            log(f"[CP8.1] Error during linker checks: {e}", "error")
+            print(traceback.format_exc())
+            return pd.DataFrame()
+
+        # final housekeeping (fragments, heavy atoms, ring count) with checkpoints
+        final_df['Linker SMILES'] = final_df['Final Linker Mol'].apply(mol_to_smiles)
+        final_df['Final Linker Mol'] = final_df['Linker SMILES'].apply(mol_from_smiles)
+        final_df['Num_Disconnected_Fragments'] = final_df['Final Linker Mol'].apply(
+            lambda m: len(Chem.GetMolFrags(m, asMols=True, sanitizeFrags=False)) if m is not None else 0
+        )
+        final_df = final_df[final_df['Num_Disconnected_Fragments'] == 1].copy()
+        log(f"[CP9] Fragment filtering done — rows now: {len(final_df)}")
+
+        # heavy atom and ring checks
+        final_df['Protac heavy atoms'] = final_df['Protac Mol'].apply(lambda m: rdMolDescriptors.CalcNumHeavyAtoms(m) if m is not None else None)
+        final_df['Warhead heavy atoms'] = final_df['Warhead Mol'].apply(lambda m: rdMolDescriptors.CalcNumHeavyAtoms(m) if m is not None else None)
+        final_df['E3 heavy atoms'] = final_df['E3 Mol'].apply(lambda m: rdMolDescriptors.CalcNumHeavyAtoms(m) if m is not None else None)
+        final_df['Linker heavy atoms'] = final_df['Final Linker Mol'].apply(lambda m: rdMolDescriptors.CalcNumHeavyAtoms(m) if m is not None else None)
+        final_df['Sum of heavy atoms'] = final_df[['Warhead heavy atoms', 'E3 heavy atoms', 'Linker heavy atoms']].sum(axis=1)
+        final_df['Heavy atom check'] = final_df.apply(
+            lambda r: (r['Sum of heavy atoms'] is not None and r['Protac heavy atoms'] is not None and r['Sum of heavy atoms'] == r['Protac heavy atoms']),
+            axis=1
+        )
+        final_df = final_df[final_df['Heavy atom check'] == True].copy()
+        log(f"[CP10] Heavy atom check passed — rows: {len(final_df)}")
+
+        # ring counts
+        final_df['Protac ring count'] = final_df['Protac Mol'].apply(lambda m: rdMolDescriptors.CalcNumRings(m) if m is not None else None)
+        final_df['Warhead ring count'] = final_df['Warhead Mol'].apply(lambda m: rdMolDescriptors.CalcNumRings(m) if m is not None else None)
+        final_df['E3 ring count'] = final_df['E3 Mol'].apply(lambda m: rdMolDescriptors.CalcNumRings(m) if m is not None else None)
+        final_df['Linker ring count'] = final_df['Final Linker Mol'].apply(lambda m: rdMolDescriptors.CalcNumRings(m) if m is not None else None)
+        final_df['Sum of ring count'] = final_df[['Warhead ring count', 'E3 ring count', 'Linker ring count']].sum(axis=1)
+        final_df['Ring count check'] = final_df.apply(
+            lambda r: (r['Sum of ring count'] is not None and r['Protac ring count'] is not None and r['Sum of ring count'] == r['Protac ring count']),
+            axis=1
+        )
+        final_df = final_df[final_df['Ring count check'] == True].copy()
+        log(f"[CP11] Ring count check passed — rows: {len(final_df)}")
+
+        # final dedup
+        final_df['Warhead SMILES'] = final_df['Warhead Mol'].apply(mol_to_smiles)
+        final_df['E3 SMILES'] = final_df['E3 Mol'].apply(mol_to_smiles)
+        final_df = final_df.drop_duplicates(subset=['Warhead SMILES', 'Linker SMILES', 'E3 SMILES'], keep='first').reset_index(drop=True)
+        log(f"[CP12] Dedup done — final rows: {len(final_df)}")
+
+        # keep only useful columns
+        cols_keep = ['Protac Mol', 'Protac SMILES', 'Warhead Mol', 'Warhead SMILES', 'E3 Mol', 'E3 SMILES',
+                     'Final Linker Mol', 'Linker SMILES', 'warhead ID', 'E3 ID']
+        final_df = final_df[[c for c in cols_keep if c in final_df.columns]].copy()
+
+        log(f"[CP13] Completed splitting for {protac_name} — returning {len(final_df)} solutions")
+        return final_df
+
+    except Exception as e:
+        st.error(f"Unhandled exception in split_protac_debug for {protac_name}: {e}")
+        print(traceback.format_exc())
+        return pd.DataFrame()
+#--------------------- End Debugging function ---------------------
+
 # Define the splitting function
-def split_protac(protac_smiles, warhead_df, e3_df):
-    protac_mol = Chem.MolFromSmiles(protac_smiles)
-    
+def split_protac(protac_name, protac_mol, warhead_df, e3_df, batch_mode=False):
+    """
+    Splits a single PROTAC (given as RDKit mol) into warhead, linker and E3 ligand candidates
+    using the provided warhead/e3 libraries. Returns a DataFrame with valid solutions (may be empty).
+    """
+    # Safety: if protac mol not provided, return empty DF
     if protac_mol is None:
-        return None, None, "Invalid PROTAC SMILES. No mol object was created."
+        if not batch_mode:
+            st.error("❌❌❌ Could not parse PROTAC SMILES ❌❌❌")
+            return pd.DataFrame()
+    #st.info("🔍 Starting splitting process...")
 
     results = []
     results_df1 = []
-    #matched_warheads = [] #debugging option
+    no_match = []
+
+    # --- WARHEAD MATCHING ---
+    protac_matches = []
+    warhead_matched = False
 
     for _, warhead_row in warhead_df.iterrows():
+        if 'Mol' not in warhead_row or warhead_row['Mol'] is None:
+            continue
+
         warhead_mol = warhead_row['Mol']
-        matches = protac_mol.GetSubstructMatches(warhead_mol)
-        w_name = warhead_row['Compound ID']
-        #st.image(Draw.MolToImage(warhead_mol, size=(500, 500))) #debugging option
-        #st.write('Warhead compound ID: ', w_name) #debugging option
-        
-        # Check if warhead_mol is None (debug)        
-        if warhead_mol is None:
-            st.write("Warhead molecule for Compound ID is none, please check the smiles or the list of warhead provided:", w_name)
-            break
-    
-        # Check if the SMILES string is valid (debug)
-        warhead_smiles = Chem.MolToSmiles(warhead_mol)
-        if warhead_smiles is None:
-            st.write("Failed to convert warhead molecule to SMILES for Compound ID:", w_name)
-            break
+        if not isinstance(warhead_mol, Chem.Mol):
+            continue
 
-        # Append all matched warheads to the list (debug)
-        #for match in matches:
-        #    matched_warheads.append(warhead_mol)
-
-    #for idx, warhead_mol in enumerate(matched_warheads):
-    #    st.image(Draw.MolToImage(warhead_mol, size=(500, 500)), caption=f'Matched Warhead Molecule {idx+1}')
-
-        for match in matches:
-            linker_mol = AllChem.DeleteSubstructs(protac_mol, warhead_mol)
-            results.append({
-                'Protac Mol': protac_mol,
-                'Warhead Mol': warhead_mol,
-                'Linker Mol': linker_mol,
-                'warhead ID': w_name,
-                'Protac SMILES': protac_smiles,
-                'Warhead SMILES': Chem.MolToSmiles(warhead_mol)
-            })
-            #st.image(Draw.MolToImage(linker_mol, size=(500, 500))) #debugging option
-
-    for _, e3_row in e3_df.iterrows():
-        e3_mol = e3_row['Mol']
-        matches = protac_mol.GetSubstructMatches(e3_mol)
-        e3_name = e3_row['Compound ID']
-        #st.image(Draw.MolToImage(e3_mol, size=(500, 500))) #debugging option
-        #st.write('E3 ligand compound ID: ', e3_name) #debugging option
+        try:
+            matches = protac_mol.GetSubstructMatches(warhead_mol)
+        except Exception as e:
+            if not batch_mode:
+                st.warning(f"⚠️ Substructure matching failed for {protac_name} (warhead): {e}")
+            continue
 
         if matches:
-            linker_mol = AllChem.DeleteSubstructs(protac_mol, e3_mol)
-            results_df1.append({
-                'Protac Mol': protac_mol,
-                'E3 Mol': e3_mol,
-                'Linker Mol': linker_mol,
-                'E3 ID': e3_name,
-                'E3 SMILES': Chem.MolToSmiles(e3_mol)
-            })
+            w_name = warhead_row.get('Compound ID', None)
+            for match in matches:
+                linker_after_w = AllChem.DeleteSubstructs(protac_mol, warhead_mol)
+                protac_matches.append({
+                    'Protac Mol': protac_mol,
+                    'Warhead Mol': warhead_mol,
+                    'Linker Mol': linker_after_w,
+                    'protac ID': protac_name,
+                    'warhead ID': w_name,
+                    'Protac SMILES': mol_to_smiles(protac_mol),
+                    'Warhead SMILES': mol_to_smiles(warhead_mol)
+                })
+            warhead_matched = True
 
-    #st.image(Draw.MolToImage(protac_mol, size=(500, 500)), caption='protac mol') #debugging option
-    #st.image(Draw.MolToImage(warhead_mol, size=(500, 500)), caption='warhead mol') #debugging option
-    #if 'linker_mol' in locals() and linker_mol is not None: #debugging option
-    #    st.image(Draw.MolToImage(linker_mol, size=(500, 500)), caption='linker mol') #debugging option
-    #else: #debugging option
-    #    st.warning("No linker molecule was generated for this PROTAC") #debugging option
-    #st.write('protac smiles: ', protac_smiles) #debugging option
-    #st.write('warhead smiles: ', Chem.MolToSmiles(warhead_mol)) #debugging option
-    #st.write('Number of warhead found: ', len(w_name)) #debugging option
-    #st.write('Number of e3 ligand found: ', len(e3_name)) #debugging option
-    #st.write("Length of the first dataframe:", len(results)) #debugging option
-    #st.write('First dataframe containing protac mol, warhead mol, linker mol, warhead ID, protac smiles, warhead smiles: ', results) #debugging option
-    #st.write(results) #debugging option
-    #st.write("Length of second dataframe:", len(results_df1)) #debugging option
-    #st.write('Second dataframe containing protac mol, e3 mol, linker mol, e3 ID, protac smiles, e3 smiles: ', results) #debugging
-    #st.write(results_df1) #debugging option
-    
-    
-    final_df = pd.merge(pd.DataFrame(results), pd.DataFrame(results_df1), on='Protac Mol')
+    if not warhead_matched:
+        if not batch_mode:
+            st.info(f"ℹ️ No warhead match found in library for {protac_name}. Skipping this PROTAC.")
+        return pd.DataFrame()
 
+    # Save warhead matches into results list
+    results.extend(protac_matches)
+
+    # --- E3 MATCHING ---
+    e3_matched = False
+    for _, e3_row in e3_df.iterrows():
+        e3_mol = e3_row.get('Mol', None)
+        if e3_mol is None:
+            continue
+
+        try:
+            matches = protac_mol.GetSubstructMatches(e3_mol)
+        except Exception as e:
+            if not batch_mode:
+                st.warning(f"⚠️ Substructure matching failed for {protac_name} (E3): {e}")
+            continue
+
+        if matches:
+            e3_name = e3_row.get('Compound ID', None)
+            for match in matches:
+                linker_after_e3 = AllChem.DeleteSubstructs(protac_mol, e3_mol)
+                results_df1.append({
+                    'Protac Mol': protac_mol,
+                    'E3 Mol': e3_mol,
+                    'Linker Mol': linker_after_e3,
+                    'E3 ID': e3_name,
+                    'E3 SMILES': mol_to_smiles(e3_mol)
+                })
+            e3_matched = True
+
+    if not e3_matched:
+        no_match.append({
+            'Protac Mol': protac_mol,
+            'protac ID': protac_name,
+            'no warhead match': False,
+            'no e3 match': True
+        })
+        return pd.DataFrame()
+
+    # --- Build DataFrames and merge ---
+    results_df = pd.DataFrame(results)
+    results_df1 = pd.DataFrame(results_df1)
+
+    if results_df.empty or results_df1.empty:
+        return pd.DataFrame()
+
+    # Merge using Protac Mol (will produce Linker Mol_x from warhead deletion and Linker Mol_y from E3 deletion)
+    final_df = pd.merge(results_df, results_df1, on='Protac Mol', how='inner')
+
+    if final_df.empty:
+        return pd.DataFrame()
+
+    # Compute Final Linker Mol by removing E3 substructure from Linker_x (if present)
     final_df['Final Linker Mol'] = final_df.apply(
-        lambda row: AllChem.DeleteSubstructs(row['Linker Mol_x'], row['E3 Mol']) 
-                    if row['E3 Mol'] and row['Linker Mol_x'].HasSubstructMatch(row['E3 Mol'])
-                    else None, 
-        axis=1)
+        lambda row: (AllChem.DeleteSubstructs(row['Linker Mol_x'], row['E3 Mol'])
+                     if row['E3 Mol'] is not None and row['Linker Mol_x'] is not None and
+                        row['Linker Mol_x'].HasSubstructMatch(row['E3 Mol'])
+                     else None),
+        axis=1
+    )
 
+    # Compute Linker Mol Check by removing Warhead from Linker_y
     final_df['Linker Mol Check'] = final_df.apply(
-        lambda row: AllChem.DeleteSubstructs(row['Linker Mol_y'], row['Warhead Mol']) 
-                        if row['Warhead Mol'] and row['Linker Mol_y'].HasSubstructMatch(row['Warhead Mol'])
-                        else None, 
-        axis=1)
+        lambda row: (AllChem.DeleteSubstructs(row['Linker Mol_y'], row['Warhead Mol'])
+                     if row['Warhead Mol'] is not None and row['Linker Mol_y'] is not None and
+                        row['Linker Mol_y'].HasSubstructMatch(row['Warhead Mol'])
+                     else None),
+        axis=1
+    )
 
+    # Verify final linker equality (as SMILES) to ensure consistent decomposition
     final_df['Linker_check'] = final_df.apply(
-        lambda row: row['Final Linker Mol'] and row['Linker Mol Check'] and 
-        Chem.MolToSmiles(row['Final Linker Mol']) == Chem.MolToSmiles(row['Linker Mol Check']),
-        axis=1)
-    
-    final_df = final_df.drop(columns=['Linker Mol_x', 'Linker Mol_y', 'Linker Mol Check'])
-    final_df = final_df[final_df['Linker_check'] == True]
+        lambda row: True if row['Final Linker Mol'] is not None and row['Linker Mol Check'] is not None and
+        mol_to_smiles(row['Final Linker Mol']) == mol_to_smiles(row['Linker Mol Check'])
+        else False,
+        axis=1
+    )
+
+    # Keep only those that passed the linker consistency check
+    final_df = final_df[final_df['Linker_check'] == True].copy()
+
+    if final_df.empty:
+        return pd.DataFrame()
+
+    # Convert Final Linker to canonical SMILES and re-create Mol to avoid RDKit inconsistencies
     final_df['Linker SMILES'] = final_df['Final Linker Mol'].apply(mol_to_smiles)
-    
-    # Function to count the number of disconnected fragments for a molecule
+    final_df['Final Linker Mol'] = final_df['Linker SMILES'].apply(mol_from_smiles)
+
+    # Count disconnected fragments and keep only single-fragment linkers
     def count_disconnected_fragments(mol):
         if mol:
-            # Get the disconnected fragments for the molecule
-            fragments = Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=False)
-            return len(fragments)
+            frags = Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=False)
+            return len(frags)
         return 0
 
-    # Count the number of disconnected fragments for each molecule in "Final Linker Mol"
     final_df['Num_Disconnected_Fragments'] = final_df['Final Linker Mol'].apply(count_disconnected_fragments)
-    final_df = final_df[final_df['Num_Disconnected_Fragments'] == 1]
-    
-    # Function to calculate the number of heavy atoms for a given RDKit molecule
+    final_df = final_df[final_df['Num_Disconnected_Fragments'] == 1].copy()
+
+    if final_df.empty:
+        return pd.DataFrame()
+
+    # Heavy atoms and ring counts
     def cal_num_hatoms(mol):
         if mol:
             return rdMolDescriptors.CalcNumHeavyAtoms(mol)
-        else:
-            return None
-    # Applying the function to each building block of the protac    
+        return None
+
+    def ring_count(mol):
+        if mol:
+            return rdMolDescriptors.CalcNumRings(mol)
+        return None
+
     final_df['Protac heavy atoms'] = final_df['Protac Mol'].apply(cal_num_hatoms)
     final_df['Warhead heavy atoms'] = final_df['Warhead Mol'].apply(cal_num_hatoms)
     final_df['E3 heavy atoms'] = final_df['E3 Mol'].apply(cal_num_hatoms)
     final_df['Linker heavy atoms'] = final_df['Final Linker Mol'].apply(cal_num_hatoms)
 
-    # Add new column for the sum of warhead, linker and E3 ligand heavy atoms
     final_df['Sum of heavy atoms'] = final_df[['Warhead heavy atoms', 'E3 heavy atoms', 'Linker heavy atoms']].sum(axis=1)
-
-    # Checking if the sum of heavy atoms is equal to protac heavy atoms
     final_df['Heavy atom check'] = final_df.apply(
-        lambda row: True if row['Sum of heavy atoms'] is not None and row['Protac heavy atoms'] is not None and 
-        row['Sum of heavy atoms'] == row['Protac heavy atoms']
-        else False, axis=1)
-    final_df = final_df[final_df['Heavy atom check'] == True]
-    
-    # Function to calculate the number of rings for a given RDKit molecule
-    def ring_count(mol):
-        if mol:
-            return rdMolDescriptors.CalcNumRings(mol)
-        else:
-            return None
+        lambda r: (r['Sum of heavy atoms'] is not None and r['Protac heavy atoms'] is not None and
+                   r['Sum of heavy atoms'] == r['Protac heavy atoms']), axis=1)
+    final_df = final_df[final_df['Heavy atom check'] == True].copy()
 
-    # I have to convert mol to smiles and then to mol again otherwise I get an error when trying to calculate the ring count for the linker
-    final_df['Linker SMILES'] =  final_df['Final Linker Mol'].apply(mol_to_smiles) 
-    final_df['Final Linker Mol'] =  final_df['Linker SMILES'].apply(mol_from_smiles) 
+    if final_df.empty:
+        if not batch_mode:
+            st.warning(f"⚠️ No combinations passed the heavy atom check for {protac_name}." 
+                    "This often happens if the substructure decomposition isn't perfect."
+                    "Please check if the warhead/E3 ligand are present in the libraries")
+        return pd.DataFrame()
 
-    # Applying the ring count function to each protac building block
+    # Ring counts
     final_df['Protac ring count'] = final_df['Protac Mol'].apply(ring_count)
     final_df['Warhead ring count'] = final_df['Warhead Mol'].apply(ring_count)
     final_df['E3 ring count'] = final_df['E3 Mol'].apply(ring_count)
     final_df['Linker ring count'] = final_df['Final Linker Mol'].apply(ring_count)
 
-    # Add new column for the sum of warhead, linker and E3 ligand ring count
     final_df['Sum of ring count'] = final_df[['Warhead ring count', 'E3 ring count', 'Linker ring count']].sum(axis=1)
-
-    # Checking if the sum of ring count of the building blocks is equal to protac ring count
     final_df['Ring count check'] = final_df.apply(
-        lambda row: True if row['Sum of ring count'] is not None and row['Protac ring count'] is not None and 
-        row['Sum of ring count'] == row['Protac ring count']
-        else False, axis=1)
-    final_df = final_df[final_df['Ring count check'] == True]
-    
-    #Adding chembl and pubchem info for warhead and E3 ligand from the intial dataset warhead_df and e3_df
-    f_warhead_df = warhead_df[['Compound ID']].copy()
-    f_e3_df = e3_df[['Compound ID']].copy()
+        lambda r: (r['Sum of ring count'] is not None and r['Protac ring count'] is not None and
+                   r['Sum of ring count'] == r['Protac ring count']), axis=1)
+    final_df = final_df[final_df['Ring count check'] == True].copy()
 
-    if 'Compound ID' in f_warhead_df.columns:
-        selected_columns_warhead = ['Compound ID']
-        final_df = pd.merge(final_df, f_warhead_df[selected_columns_warhead], 
-                                left_on='warhead ID', right_on='Compound ID', 
-                                suffixes=('_warhead', '_warhead'), how='left')
+    if final_df.empty:
+        if not batch_mode:
+            st.warning(f"⚠️ No combinations passed the ring count check for {protac_name}." 
+                    "This often happens if the substructure decomposition isn't perfect."
+                    "Please check if the warhead/E3 ligand are present in the libraries")
+        return pd.DataFrame()
 
-    if 'Compound ID' in f_e3_df.columns:
-        selected_columns_e3 = ['Compound ID']
-        final_df = pd.merge(final_df, f_e3_df[selected_columns_e3], 
-                                left_on='E3 ID', right_on='Compound ID', 
-                                suffixes=('_warhead', '_E3'), how='left')
+    # Add Warhead/E3 SMILES if not present
+    if 'Warhead SMILES' not in final_df.columns:
+        final_df['Warhead SMILES'] = final_df['Warhead Mol'].apply(mol_to_smiles)
+    if 'E3 SMILES' not in final_df.columns:
+        final_df['E3 SMILES'] = final_df['E3 Mol'].apply(mol_to_smiles)
 
-    final_df.drop(['Compound ID_warhead', 'Compound ID_E3'], axis=1, inplace=True)
-    if {'Warhead SMILES', 'Linker SMILES', 'E3 SMILES'}.issubset(final_df.columns): # Remove duplicate solutions
-        final_df = final_df.drop_duplicates(subset=['Warhead SMILES', 'Linker SMILES', 'E3 SMILES'], keep='first')
+    # Deduplicate identical (Warhead, Linker, E3) solutions — keep first
+    final_df = final_df.drop_duplicates(subset=['Warhead SMILES', 'Linker SMILES', 'E3 SMILES'], keep='first').reset_index(drop=True)
+
+    # Optionally attach library Compound ID info (if present)
+    f_warhead_df = warhead_df[['Compound ID']].copy() if 'Compound ID' in warhead_df.columns else pd.DataFrame()
+    f_e3_df = e3_df[['Compound ID']].copy() if 'Compound ID' in e3_df.columns else pd.DataFrame()
+
+    # Merge to add Compound IDs back (if available)
+    if not f_warhead_df.empty and 'warhead ID' in final_df.columns:
+        final_df = pd.merge(final_df, f_warhead_df, left_on='warhead ID', right_on='Compound ID', how='left', suffixes=('', '_warhead'))
+    if not f_e3_df.empty and 'E3 ID' in final_df.columns:
+        final_df = pd.merge(final_df, f_e3_df, left_on='E3 ID', right_on='Compound ID', how='left', suffixes=('', '_e3'))
+
+    # Keep only useful columns (you can expand as needed)
+    cols_keep = ['Protac Mol', 'Protac SMILES', 'Warhead Mol', 'Warhead SMILES', 'E3 Mol', 'E3 SMILES',
+                 'Final Linker Mol', 'Linker SMILES', 'warhead ID', 'E3 ID']
+    final_df = final_df[[c for c in cols_keep if c in final_df.columns]].copy()
+
+    # --- Display images if not in batch mode ---
+    if not batch_mode and not final_df.empty:
+        st.subheader(f"Results for {protac_name}")
+        st.write(final_df[['Protac SMILES', 'Warhead SMILES', 'E3 SMILES', 'Linker SMILES']])
+        for i, (_, row) in enumerate(final_df.iterrows(), start=1):
+            st.markdown(f"### Solution {i}")
+            st.image(Draw.MolToImage(row['Protac Mol'], size=(500, 500)), output_format='PNG')
+            col1, col2, col3 = st.columns(3)
+            col1.image(Draw.MolToImage(row['Warhead Mol'], size=(250, 300)), caption="Warhead")
+            col2.image(Draw.MolToImage(row['Final Linker Mol'], size=(250, 300)), caption="Linker")
+            col3.image(Draw.MolToImage(row['E3 Mol'], size=(250, 300)), caption="E3 ligand")
+            st.markdown("---")
 
     return final_df
-          
-# Convert RDKit Mol objects to images
-def mol_to_image(mol, size=(300, 300)):
-    return Draw.MolToImage(mol, size=size)
 
 #Streamlit app--------------------------------------------------------------
 import io
@@ -287,7 +601,7 @@ def main():
                     smiles = parts[1]
                     protac_entries.append((name, smiles))
                 else:
-                    st.warning(f"Skipping invalid line: {line}")
+                    st.warning(f"Warning, skipping invalid compound: {name}")
 
     elif input_mode == "Upload file":
         uploaded_file = st.file_uploader("Upload TXT/CSV file with PROTAC name followed by a tab/space and PROTAC SMILES (one compound per line)", type=["txt", "csv", "sdf"])
@@ -307,26 +621,44 @@ def main():
                 else:
                     st.error("File must contain columns 'Name' and 'Smiles'.")
 
+
     if st.button("Split PROTACs"):
         if not protac_entries:
             st.error("No valid PROTACs provided.")
             return
 
+        BATCH_THRESHOLD = 20 # Number of PROTACs above which batch mode is ACTIVATED
+        batch_mode = len(protac_entries) > BATCH_THRESHOLD
+
+        if batch_mode:
+            st.info(f"Processing {len(protac_entries)} PROTACs in batch mode, per-PROTAC warnings and images are suppressed.")
+
+        progress_bar = st.progress(0)  # initialize progress bar
+        progress_text = st.empty()      # for dynamic percentage text
+
         clean_results = []
         all_results = []
 
-        for name, protac_smiles in protac_entries:
+        protac_df = pd.DataFrame(protac_entries, columns=["Name", "Smiles"])
+        protac_df["Mol"] = protac_df["Smiles"].apply(lambda s: Chem.MolFromSmiles(s) if pd.notnull(s) else None)
+
+        total = len(protac_df)
+        for i, (_, row) in enumerate(protac_df.iterrows(), start=1):
+            name = row["Name"]
+            protac_smiles = row["Smiles"]
             m = Chem.MolFromSmiles(protac_smiles, sanitize=False)
             if m is None:
-                st.warning(f"Invalid SMILES skipped: {name} ({protac_smiles})")
+                if not batch_mode:
+                    st.warning(f"Warning, invalid SMILES skipped: {name} ({protac_smiles})")
                 continue
             try:
                 Chem.SanitizeMol(m)
             except:
-                st.warning(f"Invalid chemistry skipped: {name} ({protac_smiles})")
+                if not batch_mode:
+                    st.warning(f"Warning, invalid chemistry skipped: {name} ({protac_smiles})")
                 continue
 
-            final_df = split_protac(protac_smiles, warhead_df, e3_df)
+            final_df = split_protac(name, m, warhead_df, e3_df, batch_mode=batch_mode)
             if not final_df.empty:
                 all_results.append((name, final_df))
                 for _, row in final_df.iterrows():
@@ -337,6 +669,15 @@ def main():
                         "E3 SMILES": row["E3 SMILES"],
                         "Linker SMILES": row["Linker SMILES"]
                     })
+
+            # update progress bar and text
+            progress_fraction = i / total
+            progress_bar.progress(progress_fraction)
+            progress_text.text(f"Processing PROTACs: {int(progress_fraction*100)}% done ({i}/{total})")
+
+        # clear progress when done
+        progress_bar.empty()
+        progress_text.empty()
 
         if clean_results:
             # Add a 'Solution' column corresponding to each solution number per PROTAC
@@ -358,20 +699,7 @@ def main():
             st.download_button("📄 Download results as TXT", txt_buffer.getvalue(),
                             file_name="protac_splitting_results.txt", mime="text/plain")
 
-            # Detailed per-PROTAC visualization
-            #for name, final_df in all_results:
-            #    st.subheader(f"Results for {name}:")
-            #    st.write(final_df[['Protac SMILES', 'Warhead SMILES', 'E3 SMILES', 'Linker SMILES']])
-
-            for i, (_, row) in enumerate(final_df.iterrows(), start=1):
-                st.markdown(f"### Solution {i}")
-                st.image(Draw.MolToImage(row['Protac Mol'], size=(500, 500)), output_format='PNG')
-                col1, col2, col3 = st.columns(3)
-                col1.image(Draw.MolToImage(row['Warhead Mol'], size=(250, 300)), caption="Warhead")
-                col2.image(Draw.MolToImage(row['Final Linker Mol'], size=(250, 300)), caption="Linker")
-                col3.image(Draw.MolToImage(row['E3 Mol'], size=(250, 300)), caption="E3 ligand")
-                st.markdown("---")
-
+            st.markdown("---")
 
     st.markdown('<div style="text-align: center; font-size: 13px;"><i> Libraries last updated on 01/10/2025 (warhead and E3 ligand collections). </i></div>', unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
