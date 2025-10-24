@@ -705,7 +705,7 @@ def main():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.image("logos.svg", width=350)
-    st.markdown("Bellerophon is developed by MedChemBeyond group from University of Turin in collaboration with [Alvascience](https://www.alvascience.com/). The Service is meant for non-commercial use only. For info, problems or a personalized version contact giulia.apprato@unito.it")
+    st.markdown("Bellerophon is developed by MedChemBeyond group from Molecular Biotechnology and Health Sciences Department (University of Turin) in collaboration with [Alvascience](https://www.alvascience.com/). The Service is meant for non-commercial use only. For info, problems or a personalized version contact giulia.apprato@unito.it")
     st.sidebar.markdown("### You may be interested into our PROTAC-related works")
     st.sidebar.markdown(
     """
