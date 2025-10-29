@@ -314,9 +314,11 @@ def main():
 
     # Initialize session state variables if not present
     if "clean_results" not in st.session_state:
-        st.session_state["clean_results"] = None
+        st.session_state["clean_results"] = []
     if "error_messages" not in st.session_state:
-        st.session_state["error_messages"] = None
+        st.session_state["error_messages"] = []
+    if "processing_done" not in st.session_state:
+        st.session_state["processing_done"] = False
 
     # --- User email input ---
     st.markdown("### 📧 User Information")
@@ -389,7 +391,11 @@ def main():
 
 
     if st.button("Split PROTACs"):
-        if not can_process:
+        if not user_email:
+            st.error("Please enter your email address before starting the process.")
+            st.stop()
+        elif not is_valid_email(user_email):
+            st.error("Please enter a valid email address (e.g., name@example.com) before starting the process.")
             st.stop()
 
         st.info(f"Processing {len(protac_entries)} PROTACs.")
@@ -453,9 +459,10 @@ def main():
         # Save results in session state so they persist
         st.session_state["clean_results"] = clean_results
         st.session_state["error_messages"] = error_messages
+        st.session_state["processing_done"] = True
 
     # --- Show results if they exist in session state ---
-    if st.session_state["error_messages"]:
+    if st.session_state.get("error_messages"):
         error_df = pd.DataFrame(st.session_state["error_messages"], columns=["Name", "Error-type", "SMILES", "Details"])
         st.warning(f"⚠️ {len(st.session_state['error_messages'])} errors were encountered during processing.")
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -470,7 +477,7 @@ def main():
             mime="text/plain"
         )
 
-    if st.session_state["clean_results"]:
+    if st.session_state.get("clean_results"):
         st.success("✅ PROTAC splitting completed successfully.")
         clean_df = pd.DataFrame(st.session_state["clean_results"])
         clean_df['Solution'] = clean_df.groupby('Protac Name').cumcount() + 1
@@ -497,7 +504,7 @@ def main():
             mime="text/plain"
         )
 
-    elif not st.session_state["clean_results"] and not st.session_state["error_messages"]:
+    elif st.session_state.get("processing_done") and not st.session_state.get("clean_results") and not st.session_state.get("error_messages"):
         st.info("⚠️ No valid PROTACs were processed.")
 
         st.markdown("---")  # Separator for clarity
