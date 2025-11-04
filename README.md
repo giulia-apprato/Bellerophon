@@ -117,7 +117,7 @@ Users can also upload **custom `.sdf` libraries** to tailor the decomposition pr
 
 ## 👩‍🔬 **Authors**
 
-Developed by the **MedChemBeyond Group**,  
+Developed by the [**MedChemBeyond Group**](https://www.cassmedchem.unito.it/),  
 **Department of Molecular Biotechnology and Health Sciences**,  
 **University of Turin**, in collaboration with [**Alvascience**](https://www.alvascience.com/).
 
