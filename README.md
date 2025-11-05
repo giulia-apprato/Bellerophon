@@ -43,7 +43,7 @@ To minimize false positives, the algorithm applies multiple **structural integri
 - **Core library:** RDKit  
 - **Interface:** Streamlit  
 - **Source code and default libraries:** Available in this repository  
-- **Web app:** [🌐 Bellerophon Streamlit App](https://bellerophon-protacs-splitting-app.streamlit.app/)  
+- **Web app:** [🌐 Bellerophon Streamlit App](https://bellerophon-protac-decomposing-tool.streamlit.app/)  
 
 ---
 
@@ -63,7 +63,7 @@ To minimize false positives, the algorithm applies multiple **structural integri
 
 ### **Run Online**
 👉 Try it instantly on Streamlit:  
-[https://bellerophon-protacs-splitting-app.streamlit.app/](https://bellerophon-protacs-splitting-app.streamlit.app/)
+[https://bellerophon-protacs-splitting-app.streamlit.app/](https://bellerophon-protac-decomposing-tool.streamlit.app/)
 
 ### **Run Locally**
 
@@ -137,7 +137,7 @@ Use is permitted for **non-commercial purposes only**.
 If you use **Bellerophon** in your research, please cite:
 
 > **Bellerophon: A structure-based tool for automatic PROTAC decomposition**  
-> Web app: [https://bellerophon-protacs-splitting-app.streamlit.app/](https://bellerophon-protacs-splitting-app.streamlit.app/)
+> Web app: [https://bellerophon-protacs-splitting-app.streamlit.app/](https://bellerophon-protac-decomposing-tool.streamlit.app/)
 
 ---
 
