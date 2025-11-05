@@ -63,7 +63,7 @@ To minimize false positives, the algorithm applies multiple **structural integri
 
 ### **Run Online**
 👉 Try it instantly on Streamlit:  
-[https://bellerophon-protacs-splitting-app.streamlit.app/](https://bellerophon-protac-decomposing-tool.streamlit.app/)
+[https://bellerophon-protac-decomposing-tool.streamlit.app/](https://bellerophon-protac-decomposing-tool.streamlit.app/)
 
 ### **Run Locally**
 
@@ -137,13 +137,13 @@ Use is permitted for **non-commercial purposes only**.
 If you use **Bellerophon** in your research, please cite:
 
 > **Bellerophon: A structure-based tool for automatic PROTAC decomposition**  
-> Web app: [https://bellerophon-protacs-splitting-app.streamlit.app/](https://bellerophon-protac-decomposing-tool.streamlit.app/)
+> Web app: [https://bellerophon-protac-decomposing-tool.streamlit.app/](https://bellerophon-protac-decomposing-tool.streamlit.app/)
 
 ---
 
 ## 🌟 **Acknowledgments**
 
-Special thanks to contributors from the **University of Turin** and **Alvascience**  
+Special thanks to contributors from the **University of Turin**, **MedChemBeyond members**, **Alvascience**  
 for supporting the development of **Bellerophon**.
 
 ---
