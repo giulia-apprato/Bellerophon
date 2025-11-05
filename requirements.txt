@@ -1,6 +1,6 @@
 streamlit
 pandas
-rdkit==2023.9.5
+rdkit==2024.9.2
 numpy
 requests
 IPython
