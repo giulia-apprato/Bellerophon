@@ -309,6 +309,13 @@ def main():
     unsafe_allow_html=True
 )
     st.write("")
+    st.markdown(
+    """
+    <hr style="border: 1px solid #ccc; margin: 25px 0;">
+    """,
+    unsafe_allow_html=True,
+)
+
     # Initialize error messages list
     error_messages = []
 
@@ -321,39 +328,87 @@ def main():
         st.session_state["processing_done"] = False
 
     # --- User email input ---
-    st.markdown("### 📧 User Information")
-    user_email = st.text_input("Please enter your email address before processing:")
+    #st.markdown("### 📧 User Information")
+    #user_email = st.text_input("Please enter your email address before processing:")
 
     # Simple email validation
-    def is_valid_email(email):
-        import re
-        pattern = r'^[\w\.-]+@[\w\.-]+\.\w+$'
-        return re.match(pattern, email) is not None
+    #def is_valid_email(email):
+    #    import re
+    #    pattern = r'^[\w\.-]+@[\w\.-]+\.\w+$'
+    #    return re.match(pattern, email) is not None
 
-    if user_email and not is_valid_email(user_email):
-        st.error("Please enter a valid email address (e.g., name@example.com) before starting the process.")
+    #if user_email and not is_valid_email(user_email):
+    #    st.error("Please enter a valid email address (e.g., name@example.com) before starting the process.")
 
     # Proceed only if a valid email is provided
-    can_process = user_email and is_valid_email(user_email)
+    #can_process = user_email and is_valid_email(user_email)
 
-    # Upload datasets (warheads/E3)
-    st.markdown("**Upload your libraries (default ones will be used otherwise):**")
-    warhead_file = st.file_uploader("Upload Warhead SDF", type=["sdf"])
-    e3_file = st.file_uploader("Upload E3 Ligand SDF", type=["sdf"])
+    # --- Skip email requirement ---
+    can_process = True # Comment on this line if re-enabling email requirement
 
-    if warhead_file:
-        warhead_df = load_and_process_sdf(warhead_file)
+    # --- Library Selection Section ---
+    st.markdown("### 📚 Library Selection")
+
+    use_custom_libs = st.checkbox(
+        "Use custom warhead and E3 ligase libraries instead of the default ones"
+    )
+
+    if use_custom_libs:
+        st.markdown(
+            """
+            **Upload your libraries:**  
+            Custom libraries must be in `.sdf` format and include the following fields:
+            - `Name`: unique compound identifier  
+            - `Smiles`: molecule SMILES string
+            """
+        )
+
+        warhead_file = st.file_uploader("📤 Upload Warhead Library (.sdf)", type=["sdf"])
+        e3_file = st.file_uploader("📤 Upload E3 Ligase Library (.sdf)", type=["sdf"])
     else:
-        warhead_df = load_and_process_sdf('default_warhead.sdf')
+        st.info("Default warhead and E3 ligase libraries will be used.")
 
-    if e3_file:
-        e3_df = load_and_process_sdf(e3_file)
+    # --- Helper function for validation ---
+    def validate_library(df, library_type):
+        """Ensure that uploaded SDF contains required columns."""
+        missing_cols = [col for col in ["Name", "Smiles"] if col not in df.columns]
+        if missing_cols:
+            st.error(
+                f"Invalid {library_type} SDF format. Missing column(s): {', '.join(missing_cols)}."
+            )
+            st.info(f"Default {library_type.lower()} library will be used instead.")
+            return False
+        return True
+
+    # --- Load Warhead Library ---
+    if use_custom_libs and warhead_file:
+        try:
+            warhead_df = load_and_process_sdf(warhead_file)
+            if not validate_library(warhead_df, "Warhead"):
+                warhead_df = load_and_process_sdf("default_warhead.sdf")
+        except Exception as e:
+            st.error(f"Could not load Warhead SDF: {e}")
+            warhead_df = load_and_process_sdf("default_warhead.sdf")
     else:
-        e3_df = load_and_process_sdf('default_E3ligand.sdf')
+        warhead_df = load_and_process_sdf("default_warhead.sdf")
 
-    warhead_df = warhead_df.dropna(subset=['Mol']).drop_duplicates(subset='Smiles', keep='first')
-    e3_df = e3_df.dropna(subset=['Mol']).drop_duplicates(subset='Smiles', keep='first')
+    # --- Load E3 Ligand Library ---
+    if use_custom_libs and e3_file:
+        try:
+            e3_df = load_and_process_sdf(e3_file)
+            if not validate_library(e3_df, "E3 Ligand"):
+                e3_df = load_and_process_sdf("default_E3ligand.sdf")
+        except Exception as e:
+            st.error(f"Could not load E3 Ligand SDF: {e}")
+            e3_df = load_and_process_sdf("default_E3ligand.sdf")
+    else:
+        e3_df = load_and_process_sdf("default_E3ligand.sdf")
 
+    # --- Clean and remove duplicates ---
+    warhead_df = warhead_df.dropna(subset=["Mol"]).drop_duplicates(subset="Smiles", keep="first")
+    e3_df = e3_df.dropna(subset=["Mol"]).drop_duplicates(subset="Smiles", keep="first")
+
+    # --- PROTAC Input Section ---
     st.markdown("**Provide your PROTACs (choose one option):**")
     input_mode = st.radio("Input mode", ["Paste text", "Upload file"])
     protac_entries = []
@@ -368,11 +423,27 @@ def main():
                     protac_entries.append((name, smiles))
                 else:
                     invalid_line = line.strip()
-                    st.warning(f"Warning, skipping invalid compound: {invalid_line}")
+                    st.warning(f"Invalid input format, please enter PROTAC name and SMILES separated by a tab/space")
                     error_messages.append((invalid_line, "Invalid input format", "", "Less than 2 fields (name + SMILES)"))
 
     elif input_mode == "Upload file":
-        uploaded_file = st.file_uploader("Upload TXT/CSV file with PROTAC name followed by a tab/space and PROTAC SMILES (one compound per line)", type=["txt", "csv", "sdf"])
+        st.markdown(
+            """
+            **📂 Upload a PROTAC file (.txt, .csv, or .sdf):**  
+            The file must contain two columns:  
+            - `Name` → PROTAC identifier  
+            - `Smiles` → PROTAC SMILES string  
+
+            Example (CSV or TXT):  
+            ```
+            Name,Smiles
+            PROTAC_1,CCOCC(=O)N1CCC...
+            PROTAC_2,CC(C)OC(=O)NCCC...
+            ```
+            """
+        )
+        
+        uploaded_file = st.file_uploader("Please, upload your file here", type=["txt", "csv", "sdf"])
         if uploaded_file:
             if uploaded_file.name.endswith(".sdf"):
                 sdf_df = PandasTools.LoadSDF(uploaded_file)
@@ -391,12 +462,13 @@ def main():
 
 
     if st.button("Split PROTACs"):
-        if not user_email:
-            st.error("Please enter your email address before starting the process.")
-            st.stop()
-        elif not is_valid_email(user_email):
-            st.error("Please enter a valid email address (e.g., name@example.com) before starting the process.")
-            st.stop()
+        # Email validation (if enabled)
+        #if not user_email:
+        #    st.error("Please enter your email address before starting the process.")
+        #    st.stop()
+        #elif not is_valid_email(user_email):
+        #    st.error("Please enter a valid email address (e.g., name@example.com) before starting the process.")
+        #    st.stop()
 
         st.info(f"Processing {len(protac_entries)} PROTACs.")
 
@@ -513,7 +585,7 @@ def main():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.image("logos.svg", width=350)
-    st.markdown("Bellerophon is developed by MedChemBeyond group from Molecular Biotechnology and Health Sciences Department (University of Turin in collaboration with [Alvascience](https://www.alvascience.com/). The Service is meant for non-commercial use only. For info, problems or a personalized version contact giulia.apprato@unito.it")
+    st.markdown("Bellerophon is developed by [MedChemBeyond group](https://www.cassmedchem.unito.it/) from Molecular Biotechnology and Health Sciences Department (University of Turin) in collaboration with [Alvascience](https://www.alvascience.com/). The Service is meant for non-commercial use only. For info, problems or a personalized version contact giulia.apprato@unito.it")
     st.sidebar.markdown("### You may be interested into our PROTAC-related works")
     st.sidebar.markdown(
     """
