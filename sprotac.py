@@ -2,12 +2,13 @@ import streamlit as st
 import pandas as pd
 import rdkit
 import numpy as np
-from rdkit import Chem, DataStructs
+from rdkit import Chem
 from rdkit.Chem import PandasTools, AllChem
 from rdkit.Chem import Draw
 from rdkit.Chem.Draw import IPythonConsole
 from rdkit.Chem import DataStructs
 from rdkit.Chem import rdMolDescriptors
+from rdkit.Chem import PandasTools
 from rdkit.Chem.MolStandardize import rdMolStandardize
 from IPython.display import HTML
 import requests
@@ -15,10 +16,20 @@ IPythonConsole.ipython_useSVG = True
 PandasTools.RenderImagesInAllDataFrames(images=True)
 
 
-# Load SDF files into DataFrames and select relevant columns
+# Load SDF files into DataFrames with all key fields extracted directly
 def load_and_process_sdf(filename):
-    df = PandasTools.LoadSDF(filename)
-    df['Mol'] = df['Smiles'].apply(Chem.MolFromSmiles)
+    df = PandasTools.LoadSDF(filename, idName='Name', molColName='Mol', smilesName='Smiles')
+
+    # Drop rows missing essential data
+    df = df.dropna(subset=['Mol', 'Smiles'])
+
+    # Standardize SMILES and rebuild Mol column
+    df['Smiles'] = df['Smiles'].apply(lambda s: rdMolStandardize.StandardizeSmiles(s) if s else None)
+    df['Mol'] = df['Smiles'].apply(lambda s: Chem.MolFromSmiles(s) if s else None)
+
+    # Remove duplicates by SMILES
+    df = df.drop_duplicates(subset='Smiles', keep='first')
+
     return df
 
 # Get smiles from mol object
@@ -40,12 +51,12 @@ e3_df = load_and_process_sdf('default_E3ligand.sdf')
 e3_df = e3_df.dropna(subset=['Mol'])
 
 # warhead and e3 ligand dataset curation
-warhead_df['Smiles'] = warhead_df['Smiles'].apply(lambda smiles: rdMolStandardize.StandardizeSmiles(smiles) if smiles else None)
-warhead_df['Mol'] = warhead_df['Smiles'].apply(mol_from_smiles)
-warhead_df = warhead_df.drop_duplicates(subset='Smiles', keep='first') # 365 unique warheads
-e3_df['Smiles'] = e3_df['Smiles'].apply(lambda smiles: rdMolStandardize.StandardizeSmiles(smiles) if smiles else None)
-e3_df['Mol'] = e3_df['Smiles'].apply(mol_from_smiles)
-e3_df = e3_df.drop_duplicates(subset='Smiles', keep='first') # 82 unique e3 ligands
+#warhead_df['Smiles'] = warhead_df['Smiles'].apply(lambda smiles: rdMolStandardize.StandardizeSmiles(smiles) if smiles else None)
+#warhead_df['Mol'] = warhead_df['Smiles'].apply(mol_from_smiles)
+#warhead_df = warhead_df.drop_duplicates(subset='Smiles', keep='first') # 365 unique warheads
+#e3_df['Smiles'] = e3_df['Smiles'].apply(lambda smiles: rdMolStandardize.StandardizeSmiles(smiles) if smiles else None)
+#e3_df['Mol'] = e3_df['Smiles'].apply(mol_from_smiles)
+#e3_df = e3_df.drop_duplicates(subset='Smiles', keep='first') # 82 unique e3 ligands
 
 
 # Error logging function
@@ -198,6 +209,16 @@ def split_protac(protac_name, protac_smiles, protac_mol, warhead_df, e3_df, erro
         axis=1
     )
 
+    # Capture linker inconsistency before filtering
+    inconsistent_rows = final_df[final_df['Linker_check'] == False]
+    for _, r in inconsistent_rows.iterrows():
+        log_error(
+            protac_name,
+            "Linker inconsistent",
+            protac_smiles,
+            "Linker obtained from Warhead- and E3-removal steps do not match",
+            error_messages
+        )
     # Keep only those that passed the linker consistency check
     final_df = final_df[final_df['Linker_check'] == True].copy()
 
@@ -216,11 +237,20 @@ def split_protac(protac_name, protac_smiles, protac_mol, warhead_df, e3_df, erro
         return 0
 
     final_df['Num_Disconnected_Fragments'] = final_df['Final Linker Mol'].apply(count_disconnected_fragments)
+    # Identify multifragment linkers BEFORE filtering
+    multi_frag = final_df[final_df['Num_Disconnected_Fragments'] > 1]
+    for _, r in multi_frag.iterrows():
+        log_error(
+            protac_name,
+            "Multifragment linker",
+            protac_smiles,
+            f"Linker contains {r['Num_Disconnected_Fragments']} disconnected fragments",
+            error_messages
+        )
+
     final_df = final_df[final_df['Num_Disconnected_Fragments'] == 1].copy()
 
     if final_df.empty:
-        log_error(protac_name, "No solutions passed the integrity check", protac_smiles,
-                  "Final solutions dataframe is emtpy", error_messages)
         return pd.DataFrame()
 
     # Heavy atoms and ring counts
@@ -243,11 +273,23 @@ def split_protac(protac_name, protac_smiles, protac_mol, warhead_df, e3_df, erro
     final_df['Heavy atom check'] = final_df.apply(
         lambda r: (r['Sum of heavy atoms'] is not None and r['Protac heavy atoms'] is not None and
                    r['Sum of heavy atoms'] == r['Protac heavy atoms']), axis=1)
+    
+    # Log heavy atom errors BEFORE filtering
+    heavy_atom_fail = final_df[final_df['Heavy atom check'] == False]
+    for _, r in heavy_atom_fail.iterrows():
+        log_error(
+            protac_name,
+            "Heavy atom mismatch",
+            protac_smiles,
+            (
+                f"Protac heavy atoms = {r['Protac heavy atoms']}, "
+                f"sum of components = {r['Sum of heavy atoms']}"
+            ),
+            error_messages
+        )
     final_df = final_df[final_df['Heavy atom check'] == True].copy()
 
     if final_df.empty:
-            log_error(protac_name, "No solutions passed the heavy-atom number check", protac_smiles,
-                      "Final solution dataframe is empty", error_messages)
             return pd.DataFrame()
 
     # Ring counts
@@ -260,11 +302,22 @@ def split_protac(protac_name, protac_smiles, protac_mol, warhead_df, e3_df, erro
     final_df['Ring count check'] = final_df.apply(
         lambda r: (r['Sum of ring count'] is not None and r['Protac ring count'] is not None and
                    r['Sum of ring count'] == r['Protac ring count']), axis=1)
+    # Log ring count errors BEFORE filtering
+    ring_fail = final_df[final_df['Ring count check'] == False]
+    for _, r in ring_fail.iterrows():
+        log_error(
+            protac_name,
+            "Ring count mismatch",
+            protac_smiles,
+            (
+                f"Protac rings = {r['Protac ring count']}, "
+                f"sum of components = {r['Sum of ring count']}"
+            ),
+            error_messages
+        )
     final_df = final_df[final_df['Ring count check'] == True].copy()
 
     if final_df.empty:
-            log_error(protac_name, "No solutions passed the ring-count check", protac_smiles,
-                      "Final solution dataframe is empty",error_messages)
             return pd.DataFrame()
 
     # Add Warhead/E3 SMILES if not present
@@ -305,6 +358,8 @@ def main():
     'Bellerophon is a computational tool designed to automatically split PROTACs into their three components: warhead, linker, and E3 ligase ligand.<br><br>'
     'It identifies the warhead and E3 ligand from a curated library, either the default one provided by the authors or a user-uploaded version. Users can input PROTACs by pasting the name and SMILES or uploading a file.<br><br>'
     'Bellerophon supports data curation and rational design by enabling the comparison and recombination of validated building blocks for efficient PROTAC discovery.'
+    ' For additional details on the methodology and instructions for using the tool, please refer to the '
+    '<a href="https://github.com/giulia-apprato/Bellerophon" target="_blank" style="color:#1f77b4; text-decoration:none; font-weight:bold;">README file on GitHub</a>.'
     '</div>',
     unsafe_allow_html=True
 )
@@ -490,7 +545,7 @@ def main():
             
             if m is None:
                 # Log invalid SMILES (parsing failed)
-                error_messages.append((name, "Invalid SMILES", protac_smiles, "Please check the SMILES syntax"))
+                log_error(name, "Invalid SMILES", protac_smiles,"RDKit could not parse the SMILES string", error_messages)
             else:
                     try:
                         Chem.SanitizeMol(m)
@@ -536,7 +591,7 @@ def main():
     # --- Show results if they exist in session state ---
     if st.session_state.get("error_messages"):
         error_df = pd.DataFrame(st.session_state["error_messages"], columns=["Name", "Error-type", "SMILES", "Details"])
-        st.warning(f"⚠️ {len(st.session_state['error_messages'])} errors were encountered during processing.")
+        #st.warning(f"⚠️ {len(st.session_state['error_messages'])} errors were encountered during processing.")
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
         # TXT download
