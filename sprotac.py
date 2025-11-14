@@ -50,14 +50,6 @@ warhead_df = warhead_df.dropna(subset=['Mol'])
 e3_df = load_and_process_sdf('default_E3ligand.sdf')
 e3_df = e3_df.dropna(subset=['Mol'])
 
-# warhead and e3 ligand dataset curation
-#warhead_df['Smiles'] = warhead_df['Smiles'].apply(lambda smiles: rdMolStandardize.StandardizeSmiles(smiles) if smiles else None)
-#warhead_df['Mol'] = warhead_df['Smiles'].apply(mol_from_smiles)
-#warhead_df = warhead_df.drop_duplicates(subset='Smiles', keep='first') # 365 unique warheads
-#e3_df['Smiles'] = e3_df['Smiles'].apply(lambda smiles: rdMolStandardize.StandardizeSmiles(smiles) if smiles else None)
-#e3_df['Mol'] = e3_df['Smiles'].apply(mol_from_smiles)
-#e3_df = e3_df.drop_duplicates(subset='Smiles', keep='first') # 82 unique e3 ligands
-
 
 # Error logging function
 def log_error(protac_name, error_type, smiles, details, error_messages=None):
