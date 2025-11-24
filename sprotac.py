@@ -454,7 +454,8 @@ def main():
     input_mode = st.radio("Input mode", ["Paste text", "Upload file"])
     protac_entries = []
     if input_mode == "Paste text":
-        protac_input = st.text_area("Enter PROTAC name followed by a tab/space and PROTAC SMILES (more than one compound can be pasted)")
+        protac_input = st.text_area("Enter PROTAC name followed by a tab/space and PROTAC SMILES (more than one compound can be pasted) e.g.:",
+                                    "ARV-110 O=C(C1=NN=C(N2CCC(CN3CCN(C4=CC5=C(C(N(C(CC6)C(NC6=O)=O)C5=O)=O)C=C4F)CC3)CC2)C=C1)N[C@H]7CC[C@H](OC8=CC=C(C#N)C(Cl)=C8)CC7\n")
         if protac_input.strip():
             for line in protac_input.splitlines():
                 parts = line.strip().split()
