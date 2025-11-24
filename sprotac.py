@@ -15,23 +15,6 @@ import requests
 IPythonConsole.ipython_useSVG = True
 PandasTools.RenderImagesInAllDataFrames(images=True)
 
-
-# Load SDF files into DataFrames with all key fields extracted directly
-def load_and_process_sdf(filename):
-    df = PandasTools.LoadSDF(filename, idName='Name', molColName='Mol', smilesName='Smiles')
-
-    # Drop rows missing essential data
-    df = df.dropna(subset=['Mol', 'Smiles'])
-
-    # Standardize SMILES and rebuild Mol column
-    df['Smiles'] = df['Smiles'].apply(lambda s: rdMolStandardize.StandardizeSmiles(s) if s else None)
-    df['Mol'] = df['Smiles'].apply(lambda s: Chem.MolFromSmiles(s) if s else None)
-
-    # Remove duplicates by SMILES
-    df = df.drop_duplicates(subset='Smiles', keep='first')
-
-    return df
-
 # Get smiles from mol object
 def mol_to_smiles(mol):
     if mol:
@@ -43,6 +26,19 @@ def mol_from_smiles(mol):
     if mol:
         return Chem.MolFromSmiles(mol)
     return None
+
+# Load SDF files into DataFrames with all key fields extracted directly
+def load_and_process_sdf(filename):
+    df = PandasTools.LoadSDF(filename, molColName='Mol')
+
+    # Drop rows missing essential data
+    df = df.dropna(subset=['Mol'])
+
+    # Remove duplicates by Mol
+    df = df.drop_duplicates(subset='Mol', keep='first')
+
+    return df
+
 
 # Load and process the SDF files
 warhead_df = load_and_process_sdf('default_warhead.sdf')
@@ -404,9 +400,7 @@ def main():
         st.markdown(
             """
             **Upload your libraries:**  
-            Custom libraries must be in `.sdf` format and include the following fields:
-            - `Name`: unique compound identifier  
-            - `Smiles`: molecule SMILES string
+            Custom libraries must be in `.sdf` format and include the mol field.
             """
         )
 
