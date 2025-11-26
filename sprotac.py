@@ -29,7 +29,7 @@ def mol_from_smiles(mol):
 
 # Load SDF files into DataFrames with all key fields extracted directly
 def load_and_process_sdf(filename):
-    df = PandasTools.LoadSDF(filename, molColName='Mol')
+    df = PandasTools.LoadSDF(filename, molColName='Mol', smilesName='Smiles', idName= 'Name')
 
     # Drop rows missing essential data
     df = df.dropna(subset=['Mol'])
@@ -488,7 +488,7 @@ def main():
         uploaded_file = st.file_uploader("Please, upload your file here", type=["txt", "csv", "sdf"])
         if uploaded_file:
             if uploaded_file.name.endswith(".sdf"):
-                sdf_df = PandasTools.LoadSDF(uploaded_file)
+                sdf_df = load_and_process_sdf(uploaded_file)
                 if {"Name", "Smiles"}.issubset(sdf_df.columns):
                     for _, row in sdf_df.iterrows():
                         protac_entries.append((row["Name"], row["Smiles"]))
